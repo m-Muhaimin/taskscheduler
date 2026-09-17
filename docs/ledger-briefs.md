@@ -63,3 +63,41 @@ Notes / learnings:
 - DEVATION from brief: `from` is optional with env fallback (brief had it required) — superset, satisfies brief call shape
 - tests: 5/5 (happy path + exact create() args, from-fallback, missing-creds guard, missing number guard, error rethrow) — vi.mock('twilio') via vi.hoisted factory
 - REAL-SMS smoke intentionally SKIPPED — requires real Twilio creds + user consent for a test SMS; unit-mock evidence stands in
+
+## Step 9 UI — Escalations surface (Solo Sam, design brief §9) ✅ (2026-09-18)
+
+Brief: `docs/tasks/step9-escalations-ui.md`. Report: `docs/tasks/step9-escalations-ui-report.md`.
+All work confined to `apps/web` (UI-only). Uncommitted apps/api Step 9 work untouched.
+
+Gate evidence (in-session; subagent fleet down — OpenRouter credits 402):
+- [x] `npm run build --workspace=apps/web` exit 0 (7 routes incl. /dashboard/escalations)
+- [x] prod server :3100 — curl matrix all 200: /dashboard, /dashboard/escalations,
+      /dashboard/escalations?state=loading, /dashboard/escalations?state=error,
+      /dashboard/week, /dashboard/jobs/bk-today-001, /dashboard/settings
+- [x] server log clean during SSR sweep
+- [x] grep gates: single RESCHEDULE_ACTION_LABEL definition; reschedule history
+      rendered once per detail surface (sheet + route both via JobDetailBody)
+- [x] CSS linked: `<link rel="stylesheet" data-precedence>` present on all dashboard
+      pages (~95 KB bundle; contains --background/--primary/--urgent oklch tokens,
+      .bg-urgent, .text-muted-foreground, .rounded-xl, .h-16)
+
+CRITICAL FINDING — CSS was never linked:
+- `apps/web/src/app/layout.tsx` lacked `import "./globals.css"` since the first
+  dashboard commit (16de637) → app shipped unstyled; ledger curl checks (status +
+  text markers) pass without CSS so it went undetected. Fixed in this step.
+- Lesson: SSR/curl gates must also assert a `<link rel="stylesheet">` + that the
+  bundle contains token vars — add to the standard gate checklist.
+
+R1–R5 delivered: escalations page rebuild (loading/error/message/empty/list +
+confirm-dialog resolve + toast), fixture escalation store (3 seeds + resolveEscalation
+via useDashboardData, types from @tradescheduler/shared), reschedule-history deduped
+into single shared component (route page + sheet render via JobDetailBody), navigation
+entry (sidebar Escalations item + pending urgent badge, header title, Today
+needs-attention banner → /dashboard/escalations), hygiene (no dead code, no new deps,
+no token changes, no new primitives).
+
+Deferred:
+- [ ] task-reviewer/reviewer + vision (browser-level hydration/interaction check) once
+      the subagent fleet is back — diff is small and self-reviewed in-session
+- [ ] commit of the UI work (repo has uncommitted apps/api work from its own Step 9
+      track — keep the UI commit scoped to apps/web + docs/tasks)
