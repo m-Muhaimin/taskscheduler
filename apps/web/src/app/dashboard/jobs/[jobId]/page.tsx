@@ -1,19 +1,19 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useParams } from "next/navigation"
-import { ArrowLeftIcon } from "lucide-react"
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { ArrowLeftIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { JobDetailBody, JobDetailFooter } from "@/components/job-detail-body"
-import { useDashboardData } from "@/lib/use-dashboard-data"
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { JobDetailBody, JobDetailFooter } from "@/components/job-detail-body";
+import { useDashboardData } from "@/lib/use-dashboard-data";
 
 /** Desktop (and deep-link) job detail — §9 Q7. Mobile uses the bottom sheet. */
 export default function JobDetailPage() {
-  const { jobId } = useParams<{ jobId: string }>()
-  const { bookings, businessTz, tradeLabel } = useDashboardData()
-  const booking = bookings.find((b) => b.id === jobId)
+  const { jobId } = useParams<{ jobId: string }>();
+  const { bookings, businessTz, tradeLabel } = useDashboardData();
+  const booking = bookings.find((b) => b.id === jobId);
 
   if (!booking) {
     return (
@@ -24,7 +24,7 @@ export default function JobDetailPage() {
           <Link href="/dashboard">Back to today</Link>
         </Button>
       </Card>
-    )
+    );
   }
 
   return (
@@ -45,5 +45,5 @@ export default function JobDetailPage() {
         </div>
       </Card>
     </div>
-  )
+  );
 }

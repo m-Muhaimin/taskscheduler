@@ -2,6 +2,8 @@ import type { Metadata } from "next"
 import type { ReactNode } from "react"
 import { Toaster } from "sonner"
 
+import "./globals.css"
+
 import { AppSidebar } from "@/components/app-sidebar"
 import { BottomNav } from "@/components/bottom-nav"
 import { SiteHeader } from "@/components/site-header"

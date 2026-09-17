@@ -17,7 +17,7 @@
  * to a dashboard URL to render the loading / error / empty states without
  * code changes. Remove together with this module when APIs land.
  */
-import type { Booking, BookingStatus, RescheduleLogEntry, SmsMessage, User } from "@tradescheduler/shared"
+import type { Booking, BookingStatus, Escalation, RescheduleLogEntry, SmsMessage, User } from "@tradescheduler/shared"
 
 import { wallClockParts } from "@/lib/format"
 
@@ -42,6 +42,7 @@ export type DashboardBooking = Omit<Booking, "status"> & {
 
 export type DashboardState = {
   bookings: DashboardBooking[]
+  escalations: Escalation[]
   user: User
   flags: FixtureFlags
 }
@@ -268,8 +269,38 @@ function createInitialState(): DashboardState {
   const tz = userFixture.businessHours.timezone
   const bookings: DashboardBooking[] = seeds.map((s) => makeBooking(s, tz, now))
   bookings.push(makePastStartBooking(tz, now))
+  const escalations: Escalation[] = [
+    {
+      id: nextId(),
+      type: "ambiguous_intent",
+      customerPhone: "+15553456789",
+      content: "can we do it later in the week maybe after 4? not sure",
+      status: "pending",
+      createdAt: new Date(now.getTime() - 22 * 60_000).toISOString(),
+      resolvedAt: null,
+    },
+    {
+      id: nextId(),
+      type: "no_availability",
+      customerPhone: "+15554567890",
+      content: "No open slots matched the customer's preferred window.",
+      status: "pending",
+      createdAt: new Date(now.getTime() - 95 * 60_000).toISOString(),
+      resolvedAt: null,
+    },
+    {
+      id: nextId(),
+      type: "sms_delivery_failure",
+      customerPhone: "+15555678901",
+      content: "Outbound offer SMS failed to deliver (error 30007).",
+      status: "resolved",
+      createdAt: new Date(now.getTime() - 26 * 3_600_000).toISOString(),
+      resolvedAt: new Date(now.getTime() - 24 * 3_600_000).toISOString(),
+    },
+  ]
   return {
     bookings,
+    escalations,
     user: userFixture,
     flags: { loadState: "ready", emptyToday: false },
   }
@@ -299,6 +330,16 @@ export function markBookingDone(id: string) {
   publish({
     ...state,
     bookings: state.bookings.map((b) => (b.id === id ? { ...b, status: "completed" } : b)),
+  })
+}
+
+/** Resolves an escalation in the fixture store (web-local until the API lands). */
+export function resolveEscalation(id: string) {
+  publish({
+    ...state,
+    escalations: state.escalations.map((e) =>
+      e.id === id ? { ...e, status: "resolved" as const, resolvedAt: new Date().toISOString() } : e
+    ),
   })
 }
 

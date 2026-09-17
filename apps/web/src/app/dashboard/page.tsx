@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { ChevronRightIcon } from "lucide-react"
 
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -16,7 +17,7 @@ import { useDashboardData } from "@/lib/use-dashboard-data"
 
 /** Today (brief §5.2): summary strip + job list; mobile opens the detail sheet. */
 export default function TodayPage() {
-  const { loadState, emptyToday, bookings, businessTz, tradeLabel, retry } = useDashboardData()
+  const { loadState, emptyToday, bookings, businessTz, tradeLabel, retry, escalations } = useDashboardData()
   const [selected, setSelected] = useState<DashboardBooking | null>(null)
 
   const todayKey = dayKey(new Date().toISOString(), businessTz)
@@ -25,6 +26,7 @@ export default function TodayPage() {
     .sort((a, b) => a.startTime.localeCompare(b.startTime))
   const visible = emptyToday ? [] : today // `?empty=1` also zeroes the summary
   const unconfirmed = visible.filter((b) => b.status === "pending").length
+  const pendingCount = escalations.filter((e) => e.status === "pending").length
 
   const showEmpty = loadState === "ready" && visible.length === 0
   const selectedBooking = selected ? bookings.find((b) => b.id === selected.id) ?? null : null
@@ -38,6 +40,19 @@ export default function TodayPage() {
         unconfirmed={unconfirmed}
         confirmed={visible.length - unconfirmed}
       />
+
+      {loadState === "ready" && pendingCount > 0 && (
+        <Link
+          href="/dashboard/escalations"
+          className="flex items-center justify-between gap-2 rounded-xl border border-urgent/30 bg-urgent-soft px-4 py-3 text-sm font-medium text-urgent-soft-foreground"
+        >
+          <span className="flex items-center gap-2">
+            <span className="size-1.5 rounded-full bg-urgent" aria-hidden="true" />
+            {pendingCount} unconfirmed {pendingCount === 1 ? "reply" : "replies"} need you
+          </span>
+          <ChevronRightIcon className="size-4 shrink-0" />
+        </Link>
+      )}
 
       {loadState === "loading" && (
         <div className="space-y-3" aria-busy="true">

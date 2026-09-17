@@ -8,6 +8,7 @@ import { deviceTimezone, formatDateLabel, tzAbbr } from "@/lib/format"
 import { useDashboardData } from "@/lib/use-dashboard-data"
 
 function titleFor(pathname: string): string {
+  if (pathname.startsWith("/dashboard/escalations")) return "Escalations"
   if (pathname.startsWith("/dashboard/jobs")) return "Job details"
   if (pathname.startsWith("/dashboard/week")) return "Week"
   if (pathname.startsWith("/dashboard/settings")) return "Settings"

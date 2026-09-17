@@ -15,7 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
-import { buildSmsBody, formatDateLabel, formatTimeRange, maskPhone, relativeTime, smsHref } from "@/lib/format"
+import { buildSmsBody, formatDateLabel, formatTimeRange, maskPhone, smsHref } from "@/lib/format"
+import { RescheduleHistory } from "@/components/reschedule-history"
 import { type DashboardBooking } from "@/lib/fixtures"
 import { useDashboardData } from "@/lib/use-dashboard-data"
 import { cn } from "@/lib/utils"
@@ -25,13 +26,6 @@ const STATUS_LABEL: Record<DashboardBooking["status"], string> = {
   confirmed: "Confirmed",
   rescheduled: "Rescheduled",
   completed: "Completed",
-}
-
-const RESCHEDULE_ACTION_LABEL: Record<string, string> = {
-  "reschedule-offer": "Reschedule offered",
-  "reschedule-confirm": "Confirmed by customer",
-  "reschedule-completed": "Rescheduled",
-  "reschedule-failed": "Reschedule failed",
 }
 
 function InfoRow({ label, children }: { label: string; children: ReactNode }) {
@@ -97,23 +91,7 @@ export function JobDetailBody({
         </InfoRow>
       </dl>
       <Separator />
-      <div>
-        <h3 className="text-sm font-medium text-muted-foreground">Reschedule history</h3>
-        {booking.rescheduleLog.length === 0 ? (
-          <p className="mt-1 text-sm text-muted-foreground">No reschedules yet.</p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {booking.rescheduleLog.map((entry, i) => (
-              <li key={i} className="flex items-start justify-between gap-4 text-sm">
-                <span>{RESCHEDULE_ACTION_LABEL[entry.action] ?? entry.action}</span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {relativeTime(entry.timestamp)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <RescheduleHistory booking={booking} />
     </div>
   )
 }

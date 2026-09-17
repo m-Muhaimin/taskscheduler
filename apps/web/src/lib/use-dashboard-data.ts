@@ -5,6 +5,7 @@ import { useMemo, useSyncExternalStore } from "react"
 import {
   getDashboardState,
   markBookingDone,
+  resolveEscalation,
   retryLoad,
   subscribe,
   TRADE_LABEL,
@@ -34,7 +35,7 @@ function overrideFromLocation(): { loadState?: LoadState; emptyToday?: boolean }
  * after hydration — no server/client mismatch on dates or bookings.
  */
 function getServerSnapshot(): DashboardState {
-  return { flags: { loadState: "loading", emptyToday: false }, bookings: [], user: userFixture }
+  return { flags: { loadState: "loading", emptyToday: false }, bookings: [], escalations: [], user: userFixture }
 }
 
 export function useDashboardData() {
@@ -46,11 +47,13 @@ export function useDashboardData() {
     loadState,
     emptyToday: override.emptyToday ?? appState.flags.emptyToday,
     bookings: appState.bookings,
+    escalations: appState.escalations,
     user: appState.user,
     tradeLabel: TRADE_LABEL,
     businessTz: appState.user.businessHours.timezone,
     retry: retryLoad,
     markDone: markBookingDone,
+    resolveEscalation,
   }
 }
 
