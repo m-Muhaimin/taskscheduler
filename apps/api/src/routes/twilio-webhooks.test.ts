@@ -1,8 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { createApp } from '../app.js';
+
+const mocks = vi.hoisted(() => ({ enqueue: vi.fn() }));
+
+vi.mock('../services/queue-service.js', () => ({ enqueue: mocks.enqueue }));
 
 /** Test-only token; never a real credential. Signatures are computed locally. */
 const AUTH_TOKEN = 'test_twilio_auth_token_000';
@@ -43,6 +47,21 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`;
 });
 
+beforeEach(() => {
+  mocks.enqueue.mockReset();
+  mocks.enqueue.mockResolvedValue({
+    id: '00000000-0000-4000-8000-000000000000',
+    type: 'inbound_sms',
+    payload: {},
+    status: 'pending',
+    attempts: 0,
+    lockedAt: null,
+    lockedBy: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+});
+
 afterAll(async () => {
   delete process.env.TWILIO_AUTH_TOKEN;
   await new Promise<void>((resolve, reject) =>
@@ -63,10 +82,32 @@ async function post(params: Record<string, string>, signature?: string): Promise
 }
 
 describe('POST /api/twilio/webhooks/inbound-sms', () => {
-  it('accepts a valid Twilio-signed request with 200', async () => {
+  it('accepts a valid Twilio-signed request with 200 and enqueues an inbound_sms job', async () => {
     const sig = computeSignature(webhookUrl(), BASE_PARAMS);
     const res = await post(BASE_PARAMS, sig);
+
     expect(res.status).toBe(200);
+    expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueue).toHaveBeenCalledWith({
+      type: 'inbound_sms',
+      payload: expect.objectContaining({
+        From: BASE_PARAMS.From,
+        To: BASE_PARAMS.To,
+        Body: BASE_PARAMS.Body,
+        MessageSid: BASE_PARAMS.MessageSid,
+        AccountSid: BASE_PARAMS.AccountSid,
+      }),
+    });
+  });
+
+  it('returns 500 when enqueue fails but never leaks signature semantics', async () => {
+    mocks.enqueue.mockRejectedValue(new Error('queue down'));
+    const sig = computeSignature(webhookUrl(), BASE_PARAMS);
+    const res = await post(BASE_PARAMS, sig);
+
+    expect(res.status).toBe(500);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toBe('queue_unavailable');
   });
 
   it('rejects a tampered body with 401', async () => {
@@ -74,11 +115,13 @@ describe('POST /api/twilio/webhooks/inbound-sms', () => {
     const sig = computeSignature(webhookUrl(), { ...BASE_PARAMS, Body: 'CONFIRM' });
     const res = await post({ ...BASE_PARAMS, Body: 'R' }, sig);
     expect(res.status).toBe(401);
+    expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
   it('rejects a request with no signature header with 401', async () => {
     const res = await post(BASE_PARAMS);
     expect(res.status).toBe(401);
+    expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
   it('rejects missing required fields with 400 (after valid signature)', async () => {
@@ -89,10 +132,12 @@ describe('POST /api/twilio/webhooks/inbound-sms', () => {
     };
     const sig = computeSignature(webhookUrl(), sent);
     const res = await post(sent, sig);
+
     expect(res.status).toBe(400);
     const json = (await res.json()) as { error: string; fields: string[] };
     expect(json.error).toBe('missing_fields');
     expect(json.fields).toContain('From');
+    expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
   it('rejects with 401 when TWILIO_AUTH_TOKEN is not configured (fails closed)', async () => {
@@ -101,6 +146,7 @@ describe('POST /api/twilio/webhooks/inbound-sms', () => {
       const sig = computeSignature(webhookUrl(), BASE_PARAMS);
       const res = await post(BASE_PARAMS, sig);
       expect(res.status).toBe(401);
+      expect(mocks.enqueue).not.toHaveBeenCalled();
     } finally {
       process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN;
     }

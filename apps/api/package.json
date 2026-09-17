@@ -7,7 +7,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "worker": "tsx src/worker/index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "express": "5.2.1",
