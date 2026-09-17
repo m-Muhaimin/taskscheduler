@@ -27,6 +27,26 @@ Notes:
 ## Step 2 — Twilio webhook signature — pending
 ## Steps 3-11 — pending
 
+## Step — Dashboard UI (Solo Sam, design brief) ✅ (2026-09-18)
+
+Brief: `docs/design/dashboard-design-brief.md`. Work confined to `apps/web` (shared/api untouched).
+
+Gate evidence:
+- [x] per-workspace `tsc --noEmit` exit 0
+- [x] `npm run build --workspace=apps/web` exit 0 (7 routes: /, /dashboard, /dashboard/week, /dashboard/settings, /dashboard/jobs/[jobId], /_not-found)
+- [x] booted prod server, curl matrix: / → 307 /dashboard; /dashboard, /dashboard/week, /dashboard/settings, /dashboard/jobs/bk-today-001, /dashboard/jobs/bogus-id, ?state=loading|error, ?empty=1 → all 200
+- [x] SSR markers: settings shows Business hours/Timezone/America/New_York; bogus job id renders "Job not found"; /dashboard SSR renders skeletons (aria-busy) + shell (Solo Sam/Today/Week/Settings); server log clean (no prerender/hydration errors)
+- [x] git: separate `feat:` (UI) and `docs:` (ledger/briefs) commits; working tree clean after
+
+Notes / learnings:
+- React 19 `useSyncExternalStore` REQUIRES `getServerSnapshot` during SSR — missing it fails the build ("Missing getServerSnapshot"). Pattern: server snapshot = loading state (skeletons), client snapshot = fixture store → hydration-safe for client-data pages.
+- Nova `SidebarMenuButton` with `tooltip` prop renders a Radix `<Tooltip>` unconditionally → the shell needs `<TooltipProvider delayDuration={0}>` around `<SidebarProvider>` (matches shadcn demo composition); build failed without it on first prerender.
+- Nova Card base classes (`py-(--card-spacing)`, `gap-(--card-spacing)`, `ring-1 ring-foreground/10`, CardTitle `font-heading font-medium`) clash with the brief's flat style → every card component overrides `border border-border ring-0` (+ explicit padding); recorded in decisions.
+- Deps pruned to kill the block-demo footprint: removed recharts, @tanstack/react-table, @dnd-kit/core|modifiers|sortable|utilities (chart/table/dnd ambitions are out of scope until a later step). No remaining src references.
+- Fixture data is client-only; every page SSR-renders loading skeletons, then hydrates (calendar selected-day + date labels would otherwise mismatch).
+- Dev toggles for AC3 verification without rebuilds: `?state=loading|error` and `?empty=1` (URL override in `lib/use-dashboard-data.ts`), `retryLoad()` clears the override.
+- Rulings Q1–Q8 implemented (count badge at sm+, Monday-start weeks, bottom-sheet + route detail, business-tz labels shown only when device tz differs, etc.) — see decisions table for the interpretive ones (maskPhone, rescheduled accent, shadcn radix-nova drift).
+
 ## Step 2 — Twilio webhook signature verification ✅ (2026-09-18)
 - apps/api/src/middleware/twilio-signature.ts — Twilio SDK validateRequest; 401 on missing header / invalid sig / no TWILIO_AUTH_TOKEN (fails closed, env read inside handler → env-free boot preserved)
 - apps/api/src/routes/twilio-webhooks.ts — POST /api/twilio/webhooks/inbound-sms; sig first → 400 missing_fields (From/To/Body/MessageSid) → 200 empty body, logged only
