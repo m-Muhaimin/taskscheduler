@@ -1,4 +1,5 @@
 import express from 'express';
+import { twilioWebhooksRouter } from './routes/twilio-webhooks.js';
 
 /**
  * Express app factory. Kept separate from the bootstrap (index.ts) so tests
@@ -9,6 +10,8 @@ export function createApp(): express.Express {
   const app = express();
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json());
+
+  app.use('/api/twilio/webhooks', twilioWebhooksRouter);
 
   app.get('/api/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
