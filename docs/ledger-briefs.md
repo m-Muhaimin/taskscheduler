@@ -37,3 +37,9 @@ Notes:
   - twilio-node validateRequest does NOT URL-encode param values (verified in lib/webhooks/webhooks.js toFormUrlEncodedParam) — signers must use raw key+value canonical strings
   - background server processes: `kill $!` works from bash; taskkill not available in git-bash; verify orphans via powershell Get-NetTCPConnection/Get-Process
   - npm run --workspaces exit code must be captured via $? of npm itself, not a pipe (tail masks failures)
+
+## Step 3 — SMS service ✅ (2026-09-18)
+- apps/api/src/services/sms-service.ts — sendSms({to, from?, body}) → {messageSid, status}; per-call twilio client construction (no module-scope env reads → env-free boot preserved, no client-cache → trivially mockable); from defaults to TWILIO_PHONE_NUMBER (guard throws if missing); creds guard throws; API error logged + rethrown; trail logged minus message body (PII)
+- DEVATION from brief: `from` is optional with env fallback (brief had it required) — superset, satisfies brief call shape
+- tests: 5/5 (happy path + exact create() args, from-fallback, missing-creds guard, missing number guard, error rethrow) — vi.mock('twilio') via vi.hoisted factory
+- REAL-SMS smoke intentionally SKIPPED — requires real Twilio creds + user consent for a test SMS; unit-mock evidence stands in
