@@ -26,3 +26,14 @@ Notes:
 ## Step 1 — Shared types — pending
 ## Step 2 — Twilio webhook signature — pending
 ## Steps 3-11 — pending
+
+## Step 2 — Twilio webhook signature verification ✅ (2026-09-18)
+- apps/api/src/middleware/twilio-signature.ts — Twilio SDK validateRequest; 401 on missing header / invalid sig / no TWILIO_AUTH_TOKEN (fails closed, env read inside handler → env-free boot preserved)
+- apps/api/src/routes/twilio-webhooks.ts — POST /api/twilio/webhooks/inbound-sms; sig first → 400 missing_fields (From/To/Body/MessageSid) → 200 empty body, logged only
+- mounted in createApp at /api/twilio/webhooks
+- vitest suite (5/5): valid 200, tampered 401, no header 401, missing fields 400, no-token 401
+- ERRATA/learnings:
+  - `npx tsc` from repo root pulls the npm stub package "tsc" — never use it; run per-workspace via `node_modules/.bin/tsc` (TS 5.9.3 is nested per-workspace, not hoisted)
+  - twilio-node validateRequest does NOT URL-encode param values (verified in lib/webhooks/webhooks.js toFormUrlEncodedParam) — signers must use raw key+value canonical strings
+  - background server processes: `kill $!` works from bash; taskkill not available in git-bash; verify orphans via powershell Get-NetTCPConnection/Get-Process
+  - npm run --workspaces exit code must be captured via $? of npm itself, not a pipe (tail masks failures)
