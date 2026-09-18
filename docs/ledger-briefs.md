@@ -101,3 +101,39 @@ Deferred:
       the subagent fleet is back — diff is small and self-reviewed in-session
 - [ ] commit of the UI work (repo has uncommitted apps/api work from its own Step 9
       track — keep the UI commit scoped to apps/web + docs/tasks)
+
+## Design system hardening (UI primitives + docs) ✅ (2026-09-18)
+
+Skills: frontend-design (quality-floor discipline) + design-system (audit →
+fix-at-source → document). Brief pins identity (blue/orange utility, flat, system
+fonts); enhancements confined to consistency/discipline, zero visual-identity drift.
+
+Gate evidence:
+- [x] `npm run build --workspace=apps/web` exit 0 (7 routes; sizes down ~1–2 kB/page
+      from class-string removals)
+- [x] prod server :3100 curl matrix all 200 (5 routes incl. ?state=loading|error toggles)
+- [x] CSS bundle contains new surface classes: `--header-height`, `.rounded-4xl`,
+      `.text-urgent-soft-foreground`, `bg-urgent` (badge variants compiled)
+- [x] grep gates: `STATUS_LABEL` declared exactly once (lib/status.ts);
+      `variant="urgent*"` used 6×/1× at the right sites; no residual manual
+      urgent class strings outside badge.tsx/base
+
+Changes:
+- `ui/card.tsx`: base now flat `border border-border shadow-none ring-0` (was nova
+  `ring-1 ring-foreground/10`) → removes the 10-site override ritual. Call sites
+  keep only their deltas (p-0 / py-12 / size-sm / urgent accent).
+- `ui/badge.tsx`: new `urgent` (soft orange) + `urgent-solid` (filled orange)
+  variants; `[a]:hover` states included.
+- `lib/status.ts` (new): single `STATUS_LABEL` + `statusBadgeVariant()`; job-card
+  and job-detail-body now import (deleted 2 local copies).
+- Nav count pills (app-sidebar Escalations, bottom-nav Today unconfirmed) now
+  `Badge variant="urgent-solid"` (~14px → 20px touch target, consistent).
+- `--header-height: 3.5rem` promoted to globals.css token; site-header drops its
+  inline style + CSSProperties import.
+- Escalations empty state div → `Card` (base now provides flat border styling).
+- `docs/design-system.md` (new, 167 lines): tokens, components, variants,
+  states, motion, a11y, status mapping, rules/anti-patterns — the working system
+  documented per design-system skill ("if it's not documented, it doesn't exist").
+
+Result: 15 files changed, +38/−61 net (duplication collapsed into single sources).
+Deferred: reviewer/vision pass when subagent fleet returns (credits issue).
