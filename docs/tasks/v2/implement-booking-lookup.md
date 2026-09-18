@@ -1,5 +1,7 @@
 # Implement real booking lookup (CP04) — replaces TODO stubs
 
+## Status: ✅ DONE (commits 24ca56a, 4b29ddc; CP04 full reschedule flow wired on top)
+
 ## Status
 
 **Backlog.** Found during checkpoint validation (docs/checkpoint-validation.md,

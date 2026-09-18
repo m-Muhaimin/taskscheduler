@@ -1,5 +1,7 @@
 # Fix undefined `defaultAuth` in process-inbound-sms.ts
 
+## Status: ✅ DONE (commit 0ce9ad6)
+
 ## Status
 
 **Backlog.** Found during checkpoint validation (docs/checkpoint-validation.md,
