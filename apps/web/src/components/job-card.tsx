@@ -64,7 +64,7 @@ export function JobCard({
   const linkZone = (
     <>
       <span className="flex items-center justify-between gap-2">
-        <Badge variant="outline" className="text-sm tabular-nums normal-case">
+        <Badge variant="outline" size="md" className="tabular-nums">
           {formatTime(booking.startTime, tz)}
         </Badge>
         {needsAttention && (
@@ -74,8 +74,8 @@ export function JobCard({
           </Badge>
         )}
       </span>
-      <span className="mt-2 block truncate text-base font-semibold">{booking.customerName}</span>
-      <span className="mt-0.5 line-clamp-2 block text-sm text-muted-foreground">
+      <span className="mt-1.5 block truncate text-sm font-semibold">{booking.customerName}</span>
+      <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">
         {booking.serviceDescription}
       </span>
     </>
@@ -83,7 +83,7 @@ export function JobCard({
 
   return (
     <Card className={cn("gap-0 p-0", accent)}>
-      <CardContent className={cn("px-4 py-3", hoverAffordance)}>
+      <CardContent className={cn("px-3 py-2.5", hoverAffordance)}>
         {isDesktop ? (
           <Link href={`/dashboard/jobs/${booking.id}`} className="block" aria-label={`Open ${booking.customerName} job details`}>
             {linkZone}
@@ -99,40 +99,39 @@ export function JobCard({
           </button>
         )}
       </CardContent>
-      <div className="flex items-center justify-between border-t px-4 py-2">
+      <div className="flex items-center justify-between border-t px-3 py-1.5">
         <div className="flex items-center gap-1.5">
           <Badge
             variant={statusBadgeVariant(booking.status)}
             className={cn(
-              "h-5 px-2 text-[11px]",
               booking.status === "completed" && "border-border text-muted-foreground"
             )}
           >
             {STATUS_LABEL[booking.status]}
           </Badge>
-          <span className="text-sm text-muted-foreground tabular-nums">{maskPhone(booking.customerPhone)}</span>
+          <span className="text-xs text-muted-foreground tabular-nums">{maskPhone(booking.customerPhone)}</span>
         </div>
         <div className="flex items-center gap-1">
           <Button
             asChild
             variant="ghost"
             size="icon"
-            className="h-10 w-10"
+            className="size-10 lg:size-8"
             aria-label={`Call ${booking.customerName}`}
           >
             <a href={`tel:${booking.customerPhone}`}>
-              <PhoneIcon className="size-[18px]" />
+              <PhoneIcon />
             </a>
           </Button>
           <Button
             asChild
             variant="ghost"
             size="icon"
-            className="h-10 w-10"
+            className="size-10 lg:size-8"
             aria-label={`Text ${booking.customerName}`}
           >
             <a href={smsHref(booking.customerPhone, smsBody)}>
-              <MessageSquareIcon className="size-[18px]" />
+              <MessageSquareIcon />
             </a>
           </Button>
         </div>

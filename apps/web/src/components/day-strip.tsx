@@ -25,7 +25,7 @@ export function DayStrip({
   onValueChange: (value: string) => void
 }) {
   return (
-    <div className="sticky top-14 z-10 -mx-4 border-b bg-background lg:-mx-6">
+    <div className="sticky top-(--header-height) z-10 -mx-4 border-b bg-background lg:-mx-5">
       <Tabs value={value} onValueChange={onValueChange} className="w-full">
         <TabsList
           variant="line"
@@ -37,13 +37,13 @@ export function DayStrip({
               value={d.key}
               aria-label={`${d.weekday} ${d.dayNum}`}
               className={cn(
-                "h-12 min-w-12 flex-1 flex-col gap-0.5 rounded-lg px-1",
+                "h-12 min-w-12 flex-1 flex-col gap-0.5 rounded-md px-1",
                 d.isToday &&
                   "bg-primary text-primary-foreground data-active:bg-primary data-active:text-primary-foreground data-active:ring-2 data-active:ring-ring data-active:ring-offset-1"
               )}
             >
-              <span className="text-[11px] font-medium uppercase tracking-wide opacity-80">{d.weekday}</span>
-              <span className="text-sm font-semibold tabular-nums">{d.dayNum}</span>
+              <span className="text-2xs font-medium tracking-wide uppercase opacity-80">{d.weekday}</span>
+              <span className="text-xs font-semibold tabular-nums">{d.dayNum}</span>
             </TabsTrigger>
           ))}
         </TabsList>

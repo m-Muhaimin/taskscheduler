@@ -1,75 +1,61 @@
 # CLAUDE.md
 
-> ⚠️ **SPECULATIVE — no code exists yet.** Everything below is inferred
-> from `docs/prd-scheduling-assistant.md` and
-> `docs/prd-ai-scheduling-dispatch-assistant.md`, not detected from a
-> real codebase. Treat every line as a proposal to confirm or overwrite
-> once actual code lands — nothing here is a "convention," since there's
-> nothing yet to be conventional. Re-run the CLAUDE.md scan prompt once
-> `package.json` and source files exist.
+AI scheduling/dispatch assistant for solo tradespeople (plumbers, electricians, HVAC). Auto-confirms bookings via SMS, parses natural-language reschedule replies, and turns missed calls into booked jobs.
 
-## What this project is
-
-AI scheduling/dispatch assistant for solo tradespeople (plumbers,
-electricians, HVAC). Auto-confirms bookings via SMS, parses
-natural-language reschedule replies, and turns missed calls into
-booked jobs.
-
-## ⚠️ Unresolved before build starts
-
-- **Two PRD drafts conflict on payment processor**: one specifies
-  Stripe, the other Paddle. Pick one and delete/merge the stale draft
-  before scaffolding — do not build with both in the repo.
-- No repo scaffold, no chosen package manager, no CI config yet.
-
-## Intended tech stack (per PRD — not yet installed)
-
-- Frontend: Next.js (mobile-first PWA), Tailwind CSS + shadcn/ui
-- Backend: Express.js / Node
-- SMS/Voice: Twilio
-- Calendar: Google Calendar API
-- Payments: **Paddle** (per latest PRD draft — confirm before building)
-- Auth: JWT
-- AI: LLM-based intent parsing for reschedule replies
-- DB: Postgres (via Supabase, per earlier planning — not in PRD, confirm)
-
-No versions are pinned anywhere yet. First real commit should lock
-exact versions in `package.json` and this file should be regenerated
-against it.
+## Tech Stack
+- **Monorepo**: npm workspaces
+- **Frontend**: Next.js 15 (App Router), React 19, Tailwind 4, shadcn/ui
+- **Backend**: Express 5 (TypeScript, ESM), Node.js
+- **Database**: Postgres (Supabase / embedded-postgres for local dev)
+- **Integrations**: Twilio (SMS), Google Calendar API
+- **Shared**: `@tradescheduler/shared` (Domain types)
 
 ## Commands
 
-Not yet defined — no `package.json` exists. Placeholder assumption
-(Next.js default): `dev` / `build` / `test` / `lint`. Confirm once
-scaffolded.
+### Global
+- `npm run dev`: Starts both API and Web in parallel
+- `npm run build`: Builds all workspaces
 
-## Architecture (intended, not built)
+### Backend (`apps/api`)
+- `npm run dev --workspace=apps/api`: Start API in watch mode (tsx)
+- `npm run test --workspace=apps/api`: Run Vitest suite
+- `npm run db:local --workspace=apps/api`: Spin up embedded Postgres for local dev
+- `npm run worker --workspace=apps/api`: Start the SMS processing worker
 
-- `docs/` — PRDs (currently the only real content in the repo)
-- `app/` or `src/` — Next.js frontend (not created)
-- `server/` — Express backend (not created)
-- No data layer exists yet; PRD references tables for tradespeople,
-  customers, jobs, bookings, sms_logs, calendar_syncs but no schema
-  or migrations exist.
+### Frontend (`apps/web`)
+- `npm run dev --workspace=apps/web`: Start Next.js dev server (port 3000)
+- `npm run build --workspace=apps/web`: Build Next.js app
+- `npm run test --workspace=apps/web`: Run session core tests
 
-## Code conventions
+## Architecture
 
-None detectable — empty repo. Do not invent style rules; adopt
-whatever the first real code establishes and regenerate this section
-then.
+### Repository Layout
+- `apps/api`: Express backend.
+  - `src/routes`: API endpoints.
+  - `src/services`: Business logic (Auth, SMS, Calendar, Intent).
+  - `src/worker`: Asynchronous poll loop for processing queued SMS.
+  - `src/db/migrations`: SQL schema migrations.
+- `apps/web`: Next.js frontend.
+  - `src/app`: App Router pages and layouts.
+  - `src/components`: shadcn/ui and domain components.
+  - `src/lib`: Auth clients and utility functions.
+- `packages/shared`: Core domain types used by both API and Web.
 
-## Hard rules (carried forward from prior planning, to enforce once code exists)
+### Core Pipeline
+`Twilio Webhook` $\rightarrow$ `apps/api (Route)` $\rightarrow$ `Queue Service` $\rightarrow$ `Worker` $\rightarrow$ `Intent/Calendar Services` $\rightarrow$ `Twilio SMS Reply`.
 
-- Never send an SMS without a logged consent record
-- Never auto-confirm a reschedule without an explicit customer reply
-- Never touch payment code (Paddle/Stripe — TBD) or Twilio webhook
-  signature verification without explicit sign-off
-- Use shadcn/ui components instead of hand-rolled UI primitives once
-  frontend work begins
+## Code Conventions
+- **Backend**: ESM modules, Zod for validation, Vitest for testing.
+- **Frontend**: App Router, Tailwind 4, shadcn/ui components.
+- **Types**: All shared domain entities must reside in `@tradescheduler/shared`.
 
-## Gotchas a new engineer would hit in week 1
+## Hard Rules
+- **SMS Consent**: Never send an SMS without a logged consent record.
+- **Reschedule Safety**: Never auto-confirm a reschedule without an explicit customer reply.
+- **Security**: Twilio webhook signatures must be verified using `twilio-signature.ts` middleware.
+- **UI**: Use shadcn/ui primitives; avoid hand-rolling basic components.
 
-- There is currently no code — the biggest "gotcha" is discovering
-  that despite two PRDs, nothing has been built
-- The two PRD drafts contradict each other on payment provider; don't
-  assume either is final without asking
+## Known Issues / Gotchas
+- **Payment Processor**: Currently unresolved (Stripe vs. Paddle). No payment code is implemented.
+- **Credentials**: `.env` was previously committed; ensure credentials are rotated and never committed again.
+- **Local DB**: Local development uses `embedded-postgres`. Refer to `docs/local-dev.md`.

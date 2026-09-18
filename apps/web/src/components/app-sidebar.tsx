@@ -43,8 +43,8 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="flex h-12 items-center gap-2 px-2">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+        <div className="flex h-10 items-center gap-2">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <WrenchIcon className="size-4" />
           </div>
           <span className="truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">
@@ -65,7 +65,7 @@ export function AppSidebar() {
                     {item.title === "Escalations" && pendingEscalations > 0 && (
                       <Badge
                         variant="urgent-solid"
-                        className="ml-auto min-w-4 px-1.5 text-[10px] font-semibold leading-none text-center group-data-[collapsible=icon]:hidden"
+                        className="ml-auto min-w-4 px-1.5 tabular-nums group-data-[collapsible=icon]:hidden"
                       >
                         {pendingEscalations}
                       </Badge>
@@ -78,7 +78,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <div className="flex flex-col gap-0.5 px-2 py-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+        <div className="flex flex-col gap-0.5 px-2 py-1.5 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
           <span className="truncate font-medium text-foreground">{tradeLabel}</span>
           <span className="truncate">{sessionUser?.email}</span>
           <span className="tabular-nums">

@@ -23,7 +23,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </div>
             <SidebarInset>
               <SiteHeader />
-              <div className="mx-auto w-full max-w-xl flex-1 px-4 pt-4 pb-[calc(4rem+env(safe-area-inset-bottom)+1rem)] lg:max-w-5xl lg:px-6 lg:pb-10">
+              <div className="mx-auto w-full max-w-xl flex-1 px-4 pt-3 pb-[calc(4rem+env(safe-area-inset-bottom)+1rem)] lg:max-w-5xl lg:px-5 lg:pb-8">
                 {children}
               </div>
             </SidebarInset>

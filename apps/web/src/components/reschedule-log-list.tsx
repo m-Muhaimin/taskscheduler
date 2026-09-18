@@ -8,14 +8,14 @@ interface Props {
 
 export function RescheduleLogList({ entries, actionLabel }: Props) {
   return (
-    <ul className="mt-2 space-y-2">
+    <ul className="mt-1.5 space-y-1.5">
       {entries.map((entry, i) => (
         <li
           key={`${entry.action}-${entry.timestamp}-${i}`}
-          className="flex items-start justify-between gap-4 text-sm"
+          className="flex items-start justify-between gap-4 text-xs"
         >
           <span>{actionLabel[entry.action] ?? entry.action}</span>
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">
             {relativeTime(entry.timestamp)}
           </span>
         </li>

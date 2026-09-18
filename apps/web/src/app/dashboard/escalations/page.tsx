@@ -35,11 +35,11 @@ export default function EscalationsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {showLoading && (
-        <div className="space-y-3" aria-busy="true">
+        <div className="space-y-2" aria-busy="true">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-20 rounded-lg" />
           ))}
         </div>
       )}
@@ -57,7 +57,7 @@ export default function EscalationsPage() {
       )}
 
       {showEmpty && (
-        <Card className="p-8 text-center text-sm text-muted-foreground">
+        <Card className="p-6 text-center text-xs text-muted-foreground">
           No pending escalations — everything&apos;s under control.
         </Card>
       )}
@@ -72,7 +72,7 @@ export default function EscalationsPage() {
               </span>
             )}
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {escalations.map((e) => (
               <EscalationCard
                 key={e.id}

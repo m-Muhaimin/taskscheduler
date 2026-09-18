@@ -33,6 +33,9 @@ export async function launch() {
   let nextId = 1
   const pending = new Map()
   const events = []
+  // Full event messages (method + params) are kept separately so diagnostics can
+  // inspect payloads without changing `events`, which callers compare by name.
+  const rawEvents = []
   ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data)
     if (data.id && pending.has(data.id)) {
@@ -41,6 +44,8 @@ export async function launch() {
       data.error ? reject(new Error(JSON.stringify(data.error))) : resolve(data.result)
     } else if (data.method) {
       events.push(data.method)
+      rawEvents.push(data)
+      if (rawEvents.length > 4000) rawEvents.splice(0, 1000)
     }
   }
   const send = (method, params = {}) =>
@@ -62,8 +67,10 @@ export async function launch() {
     proc,
     send,
     events,
+    rawEvents,
     async goto(url) {
       events.length = 0
+      rawEvents.length = 0
       await send("Page.navigate", { url })
       for (let i = 0; i < 100; i++) {
         if (events.includes("Page.loadEventFired")) break

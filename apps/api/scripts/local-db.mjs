@@ -118,9 +118,36 @@ async function applyMigrations() {
 }
 
 async function main() {
+  // `initialise()` shells out to initdb, which refuses to touch a non-empty
+  // directory — so it must only run on a genuinely fresh cluster. Calling it
+  // unconditionally made every start after the first fail.
   const fresh = !existsSync(join(dataDir, "PG_VERSION"));
-  if (fresh) log(`initialising cluster at ${dataDir}`);
-  await db.initialise();
+  if (fresh) {
+    log(`initialising cluster at ${dataDir}`);
+    await db.initialise();
+  }
+  // A hard kill leaves postmaster.pid behind and Postgres then refuses to
+  // start ("lock file already exists"). If the recorded PID is dead the lock
+  // is stale, so clear it.
+  const pidFile = join(dataDir, "postmaster.pid");
+  if (existsSync(pidFile)) {
+    // parseInt stops at the first non-digit, so no line splitting needed.
+    const pid = Number.parseInt(readFileSync(pidFile, "utf8"), 10);
+    let alive = false;
+    if (Number.isInteger(pid)) {
+      try {
+        process.kill(pid, 0);
+        alive = true;
+      } catch {
+        alive = false;
+      }
+    }
+    if (!alive) {
+      log(`clearing stale postmaster.pid (pid ${pid} is not running)`);
+      rmSync(pidFile, { force: true });
+    }
+  }
+
   await db.start();
   log(`postgres ${fresh ? "initialised and " : ""}listening on :${PORT}`);
 

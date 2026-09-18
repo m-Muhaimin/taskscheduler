@@ -3,6 +3,12 @@ import type { ReactNode } from "react"
 import { Toaster } from "sonner"
 
 import "./globals.css"
+import { Outfit, Raleway } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const ralewayHeading = Raleway({subsets:['latin'],variable:'--font-heading'});
+
+const outfit = Outfit({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "Solo Sam",
@@ -13,7 +19,7 @@ export const metadata: Metadata = {
  *  without the dashboard shell. The shell lives in app/dashboard/layout.tsx. */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={cn("font-sans", outfit.variable, ralewayHeading.variable)}>
       <body>
         {children}
         <Toaster position="bottom-center" offset={90} />

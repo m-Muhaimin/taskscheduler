@@ -16,17 +16,17 @@ export function SessionGate({ children }: { children: ReactNode }) {
 
   if (status === "loading") {
     return (
-      <div className="mx-auto w-full max-w-xl space-y-4 px-4 pt-8">
-        <Skeleton className="h-8 w-40" />
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-20 w-full" />
+      <div className="mx-auto w-full max-w-xl space-y-3 px-4 pt-6">
+        <Skeleton className="h-7 w-32" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
       </div>
     )
   }
 
   if (status === "error") {
     return (
-      <div className="mx-auto w-full max-w-xl px-4 pt-8">
+      <div className="mx-auto w-full max-w-xl px-4 pt-6">
         <Alert variant="destructive">
           <AlertTitle>Can&rsquo;t load your schedule</AlertTitle>
           <AlertDescription>{error}</AlertDescription>

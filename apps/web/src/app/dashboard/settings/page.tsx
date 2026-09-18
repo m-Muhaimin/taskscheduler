@@ -22,13 +22,13 @@ export default function SettingsPage() {
         <CardContent>
           <CardTitle className="font-semibold">Business hours</CardTitle>
           <CardDescription className="mt-1">When you take jobs. Sample data.</CardDescription>
-          <div className="mt-3 flex items-center justify-between text-sm">
+          <div className="mt-2.5 flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Hours</span>
             <span className="font-medium tabular-nums">
               {user.businessHours.start} – {user.businessHours.end}
             </span>
           </div>
-          <Separator className="my-3" />
+          <Separator className="my-2.5" />
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Timezone</span>
             <span className="font-medium">
@@ -36,7 +36,7 @@ export default function SettingsPage() {
               {tz !== businessTz ? ` (${tzAbbr(businessTz)})` : ""}
             </span>
           </div>
-          <Separator className="my-3" />
+          <Separator className="my-2.5" />
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Phone</span>
             <span className="font-medium tabular-nums">{user.phoneNumber}</span>
@@ -48,7 +48,7 @@ export default function SettingsPage() {
         <CardContent>
           <CardTitle className="font-semibold">SMS template</CardTitle>
           <CardDescription className="mt-1">Used for reschedule offers.</CardDescription>
-          <p className="mt-3 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+          <p className="mt-2.5 rounded-md bg-muted p-3 text-xs text-muted-foreground">
             {user.smsSettings.rescheduleTemplate}
           </p>
         </CardContent>
@@ -58,16 +58,16 @@ export default function SettingsPage() {
         <CardContent>
           <CardTitle className="font-semibold">Account</CardTitle>
           <CardDescription className="mt-1">Signed in on this device.</CardDescription>
-          <div className="mt-3 flex items-center justify-between text-sm">
+          <div className="mt-2.5 flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Name</span>
             <span className="font-medium">{sessionUser?.displayName}</span>
           </div>
-          <Separator className="my-3" />
+          <Separator className="my-2.5" />
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="shrink-0 text-muted-foreground">Email</span>
             <span className="truncate font-medium">{sessionUser?.email}</span>
           </div>
-          <Button variant="outline" className="mt-4 h-11 w-full" onClick={signOut}>
+          <Button variant="outline" className="mt-3 h-11 lg:h-9 w-full" onClick={signOut}>
             Sign out
           </Button>
         </CardContent>

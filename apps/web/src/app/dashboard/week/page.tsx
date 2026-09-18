@@ -63,11 +63,11 @@ export default function WeekPage() {
     : null
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {loadState === "loading" && (
-        <div className="space-y-3" aria-busy="true">
+        <div className="space-y-2" aria-busy="true">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-20 rounded-lg" />
           ))}
         </div>
       )}
@@ -85,7 +85,7 @@ export default function WeekPage() {
       )}
 
       {loadState === "ready" && (
-        <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+        <div className="grid gap-5 lg:grid-cols-[300px_1fr]">
           <div className="hidden lg:block">
             <Calendar
               mode="single"
@@ -97,16 +97,16 @@ export default function WeekPage() {
             />
           </div>
 
-          <div className="min-w-0 space-y-4">
+          <div className="min-w-0 space-y-3">
             <div className="lg:hidden">
               <DayStrip days={days} value={selectedKey} onValueChange={setSelectedKey} />
             </div>
 
             {!hasAny && (
-              <Card className="py-12 text-center">
+              <Card className="py-10 text-center">
                 <p className="text-base font-medium">Nothing booked this week.</p>
-                <p className="mt-1 text-sm text-muted-foreground">Plenty of time to chase new leads.</p>
-                <Button asChild variant="secondary" className="mt-4 h-11">
+                <p className="mt-1 text-xs text-muted-foreground">Plenty of time to chase new leads.</p>
+                <Button asChild variant="secondary" className="mt-3 h-11">
                   <Link href="/dashboard">Back to today</Link>
                 </Button>
               </Card>
@@ -125,9 +125,9 @@ export default function WeekPage() {
                   </span>
                 </div>
                 {selectedJobs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nothing booked that day.</p>
+                  <p className="text-xs text-muted-foreground">Nothing booked that day.</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {selectedJobs.map((b) => (
                       <JobCard
                         key={b.id}

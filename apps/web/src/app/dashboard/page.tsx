@@ -8,6 +8,7 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { JobCard } from "@/components/job-card"
+import { JobsChart } from "@/components/jobs-chart"
 import { JobDetailSheet } from "@/components/job-detail-sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SummaryStrip } from "@/components/summary-strip"
@@ -32,7 +33,13 @@ export default function TodayPage() {
   const selectedBooking = selected ? bookings.find((b) => b.id === selected.id) ?? null : null
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      <JobsChart
+        bookings={visible}
+        tz={businessTz}
+        loading={loadState === "loading"}
+      />
+
       <SummaryStrip
         loading={loadState === "loading"}
         error={loadState === "error"}
@@ -44,7 +51,7 @@ export default function TodayPage() {
       {loadState === "ready" && pendingCount > 0 && (
         <Link
           href="/dashboard/escalations"
-          className="flex items-center justify-between gap-2 rounded-xl border border-urgent/30 bg-urgent-soft px-4 py-3 text-sm font-medium text-urgent-soft-foreground"
+          className="flex items-center justify-between gap-2 rounded-lg border border-urgent/30 bg-urgent-soft px-3 py-2.5 text-sm font-medium text-urgent-soft-foreground"
         >
           <span className="flex items-center gap-2">
             <span className="size-1.5 rounded-full bg-urgent" aria-hidden="true" />
@@ -55,9 +62,9 @@ export default function TodayPage() {
       )}
 
       {loadState === "loading" && (
-        <div className="space-y-3" aria-busy="true">
+        <div className="space-y-2" aria-busy="true">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-20 rounded-lg" />
           ))}
         </div>
       )}
@@ -75,16 +82,16 @@ export default function TodayPage() {
       )}
 
       {showEmpty && (
-        <Card className="py-12 text-center">
+        <Card className="py-10 text-center">
           <p className="text-base font-medium">No jobs today — enjoy the day off.</p>
-          <Button asChild variant="secondary" className="mt-4 h-11">
+          <Button asChild variant="secondary" className="mt-3 h-11">
             <Link href="/dashboard/week">See the week</Link>
           </Button>
         </Card>
       )}
 
       {loadState === "ready" && visible.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {visible.map((b) => (
             <JobCard
               key={b.id}

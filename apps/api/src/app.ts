@@ -1,11 +1,11 @@
 import express from 'express';
 import { twilioWebhooksRouter } from './routes/twilio-webhooks.js';
 import { authRouter } from './routes/auth.js';
+import { mountDashboardRoutes } from './routes/dashboard/index.js';
 
-/**
- * Express app factory. Kept separate from the bootstrap (index.ts) so tests
- * and the worker process can import the same app. No env-dependent clients
- * are constructed here — the server must boot cleanly with no .env present.
+/** Express app factory. Kept separate from the bootstrap (index.ts) so tests
+ *  and the worker process can import the same app. No env-dependent clients
+ *  are constructed here — the server must boot cleanly with no .env present.
  */
 export function createApp(): express.Express {
   const app = express();
@@ -14,6 +14,7 @@ export function createApp(): express.Express {
 
   app.use('/api/auth', authRouter);
   app.use('/api/twilio/webhooks', twilioWebhooksRouter);
+  mountDashboardRoutes(app);
 
   app.get('/api/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });

@@ -19,13 +19,13 @@ export function RescheduleHistory({ booking }: { booking: DashboardBooking }) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-muted-foreground">Reschedule history</h3>
         {hasLog && (
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline">
             {booking.rescheduleLog.length} event{booking.rescheduleLog.length === 1 ? "" : "s"}
           </Badge>
         )}
       </div>
       {!hasLog ? (
-        <p className="text-sm text-muted-foreground">No reschedules yet.</p>
+        <p className="text-xs text-muted-foreground">No reschedules yet.</p>
       ) : (
         <RescheduleLogList
           entries={booking.rescheduleLog}

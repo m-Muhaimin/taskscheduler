@@ -45,7 +45,7 @@ export function JobDetailBody({
     booking.status === "pending" && new Date(booking.startTime).getTime() < Date.now()
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge
           variant={statusBadgeVariant(booking.status)}
@@ -62,9 +62,9 @@ export function JobDetailBody({
           </Badge>
         )}
       </div>
-      <h2 className="text-lg font-semibold">{booking.customerName}</h2>
+      <h2 className="text-base font-semibold">{booking.customerName}</h2>
       <Separator />
-      <dl className="space-y-3">
+      <dl className="space-y-2.5">
         <InfoRow label="Service">{booking.serviceDescription}</InfoRow>
         <InfoRow label="Time">
           <span className="tabular-nums">{formatTimeRange(booking.startTime, booking.endTime, tz)}</span>
@@ -131,7 +131,7 @@ export function JobDetailFooter({
         </Button>
       </div>
       {!alreadyDone && (
-        <Button variant="outline" className="h-11 w-full" onClick={() => setConfirmOpen(true)}>
+        <Button variant="outline" className="h-11 lg:h-9 w-full" onClick={() => setConfirmOpen(true)}>
           Mark done
         </Button>
       )}

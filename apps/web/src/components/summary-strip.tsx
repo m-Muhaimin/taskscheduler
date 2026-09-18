@@ -27,7 +27,7 @@ export function SummaryStrip({
     return (
       <div className="grid grid-cols-3 gap-2" aria-busy="true">
         {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-16 rounded-xl" />
+          <Skeleton key={i} className="h-14 rounded-lg" />
         ))}
       </div>
     )
@@ -48,17 +48,17 @@ export function SummaryStrip({
           size="sm"
           className={cn(c.urgent && "border-urgent/30 bg-urgent-soft")}
         >
-          <CardContent className="px-3">
+          <CardContent>
             <p
               className={cn(
-                "text-2xl font-semibold tabular-nums",
+                "text-xl font-semibold tabular-nums",
                 c.urgent && !error ? "text-urgent" : "text-foreground",
                 error && "text-muted-foreground"
               )}
             >
               {c.value}
             </p>
-            <p className="truncate text-xs text-muted-foreground">{c.label}</p>
+            <p className="truncate text-2xs font-medium tracking-wide text-muted-foreground uppercase">{c.label}</p>
           </CardContent>
         </Card>
       ))}

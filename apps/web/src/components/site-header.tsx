@@ -27,13 +27,13 @@ export function SiteHeader() {
   }, [businessTz])
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center border-b bg-background lg:h-(--header-height)">
-      <div className="flex w-full items-center gap-2 px-4 lg:px-6">
-        <SidebarTrigger className="-ml-1 hidden lg:inline-flex" />
+    <header className="sticky top-0 z-20 flex h-(--header-height) shrink-0 items-center border-b bg-background">
+      <div className="flex w-full items-center gap-2 px-4 lg:px-5">
+        <SidebarTrigger className="-ml-1.5 hidden lg:inline-flex" />
         <h1 className="text-base font-semibold">{titleFor(pathname)}</h1>
         {/* Date is client-only (fixture data lives client-side after SSR). */}
         {loadState === "ready" && (
-          <span className="ml-auto text-sm text-muted-foreground tabular-nums">
+          <span className="ml-auto text-xs text-muted-foreground tabular-nums">
             {formatDateLabel(new Date().toISOString(), businessTz)}
             {showTz && <span className="hidden sm:inline"> · {tzAbbr(businessTz)}</span>}
           </span>

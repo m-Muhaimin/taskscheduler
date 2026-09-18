@@ -27,27 +27,27 @@ export function EscalationCard({ escalation, onResolve }: { escalation: Escalati
 
   return (
     <Card className="p-0">
-      <CardContent className="px-4 py-3">
+      <CardContent className="px-3 py-2.5">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1 space-y-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
             <div className="flex items-center gap-2">
-              <Badge variant={TYPE_VARIANT[escalation.type]} className="text-xs">
+              <Badge variant={TYPE_VARIANT[escalation.type]}>
                 {TYPE_LABEL[escalation.type]}
               </Badge>
               {isPending ? (
-                <Badge variant="urgent" className="text-xs">
+                <Badge variant="urgent">
                   Pending
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="text-xs">
+                <Badge variant="secondary">
                   Resolved
                 </Badge>
               )}
             </div>
 
-            <p className="text-sm text-muted-foreground line-clamp-2">{escalation.content ?? "—"}</p>
+            <p className="text-xs text-muted-foreground line-clamp-2">{escalation.content ?? "—"}</p>
 
-            <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
+            <div className="flex items-center gap-3 text-2xs text-muted-foreground tabular-nums">
               <span className="truncate">{maskPhone(escalation.customerPhone)}</span>
               <span className="shrink-0">{relativeTime(escalation.createdAt)}</span>
             </div>
@@ -57,7 +57,7 @@ export function EscalationCard({ escalation, onResolve }: { escalation: Escalati
             <Button
               variant="outline"
               size="sm"
-              className="shrink-0 h-9"
+              className="shrink-0 h-10 lg:h-8"
               onClick={onResolve}
             >
               Resolve
