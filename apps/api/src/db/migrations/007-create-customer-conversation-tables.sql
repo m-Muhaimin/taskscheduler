@@ -33,6 +33,7 @@ comment on table public.ts_customers is
   'customers — internal, server-only access (RLS deny-by-default)';
 
 alter table public.ts_customers
+  drop constraint if exists ts_customers_org_phone_key,
   add constraint ts_customers_org_phone_key unique (organization_id, phone);
 
 create index if not exists ts_customers_org_idx

@@ -16,6 +16,9 @@ const m = vi.hoisted(() => ({
   initiateRescheduleFlow: vi.fn(),
   processSlotChoice: vi.fn(),
   confirmReschedule: vi.fn(),
+  findBookingById: vi.fn(),
+  findBookingByPhone: vi.fn(),
+  findUserProfile: vi.fn(),
 }));
 
 vi.mock('../services/conversation-domain.js', () => ({
@@ -35,6 +38,11 @@ vi.mock('../services/intent-service.js', () => ({
 vi.mock('../services/conversation-service.js', () => ({
   getConversationByPhone: m.getConversationByPhone,
 }));
+vi.mock('../services/booking-service.js', () => ({
+  findBookingById: m.findBookingById,
+  findBookingByPhone: m.findBookingByPhone,
+  findUserProfile: m.findUserProfile,
+}));
 vi.mock('../services/sms-service.js', () => ({
   sendSms: m.sendSms,
 }));
@@ -43,6 +51,22 @@ vi.mock('../services/reschedule-service.js', () => ({
   processSlotChoice: m.processSlotChoice,
   confirmReschedule: m.confirmReschedule,
 }));
+
+const BOOKING = {
+  id: 'apt-1',
+  userId: 'user-1',
+  customerPhone: '+15551234567',
+  customerName: 'Sam',
+  serviceDescription: 'drain',
+  startTime: '2026-09-18T14:00:00.000Z',
+  endTime: '2026-09-18T15:00:00.000Z',
+  status: 'pending',
+  depositStatus: 'paid',
+  googleCalendarEventId: null,
+  smsHistory: [],
+  rescheduledFromId: null,
+  rescheduleLog: [],
+};
 
 async function loadWorker() {
   return await import('./process-inbound-sms.js');
@@ -69,6 +93,21 @@ beforeEach(() => {
   m.appendMessage.mockResolvedValue({ id: 'msg-1' });
   m.resolveOrganizationIdByTwilioNumber.mockResolvedValue('org-1');
   m.getConversationByPhone.mockResolvedValue(null);
+  m.findBookingByPhone.mockResolvedValue({
+    id: 'apt-1',
+    userId: 'user-1',
+    customerPhone: '+15551234567',
+    customerName: 'Sam',
+    serviceDescription: 'drain',
+    startTime: '2026-09-18T14:00:00.000Z',
+    endTime: '2026-09-18T15:00:00.000Z',
+    status: 'pending',
+    depositStatus: 'paid',
+    googleCalendarEventId: null,
+    smsHistory: [],
+    rescheduledFromId: null,
+    rescheduleLog: [],
+  });
 });
 
 afterEach(() => {
@@ -135,17 +174,76 @@ describe('processInboundSms — CP03 wiring', () => {
     expect(m.parseIntent).not.toHaveBeenCalled();
   });
 
-  it('reschedule intent reaches the real flow without a crash (defaultAuth landmine fixed)', async () => {
-    // fix-worker-defaultAuth.md: the real typed defaultAuth (calendar-service)
-    // replaces the undefined identifier. With the booking lookup still stubbed
-    // to null the flow dead-ends silently (initiateRescheduleFlow returns null) —
-    // that stub is removed by implement-booking-lookup.md.
+    it('reschedule intent with no conversation state falls back to the most recent booking by phone', async () => {
     const worker = await loadWorker();
     m.parseIntent.mockReturnValue({ intent: 'reschedule', confidence: 0.95 });
+    m.getConversationByPhone.mockResolvedValue(null);
+    m.findBookingByPhone.mockResolvedValue({ ...BOOKING, id: 'apt-byphone' });
 
     await worker.processInboundSms(job({ From: '+15551234567', Body: 'RESCHEDULE', To: '+15559876543' }));
 
-    expect(m.initiateRescheduleFlow).toHaveBeenCalledTimes(1); // no ReferenceError
-    expect(m.createEscalation).not.toHaveBeenCalled(); // silent dead-end (booking stub null)
+    expect(m.findBookingByPhone).toHaveBeenCalledWith('org-1', '+15551234567');
+    expect(m.initiateRescheduleFlow).toHaveBeenCalledWith(
+      'apt-byphone',
+      '+15551234567',
+      expect.anything(),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it('reschedule intent uses booking_id from existing conversation state when present', async () => {
+    const worker = await loadWorker();
+    m.parseIntent.mockReturnValue({ intent: 'reschedule', confidence: 0.95 });
+    m.getConversationByPhone.mockResolvedValue({ id: 'conv-9', bookingId: 'apt-fromstate' });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'RESCHEDULE', To: '+15559876543' }));
+
+    expect(m.initiateRescheduleFlow).toHaveBeenCalledWith(
+      'apt-fromstate',
+      '+15551234567',
+      expect.anything(),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(m.findBookingByPhone).not.toHaveBeenCalled();
+  });
+
+  it('sends no-matching-booking SMS when neither path finds a booking (no escalation)', async () => {
+    const worker = await loadWorker();
+    m.parseIntent.mockReturnValue({ intent: 'reschedule', confidence: 0.95 });
+    m.getConversationByPhone.mockResolvedValue(null);
+    m.findBookingByPhone.mockResolvedValue(null);
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'RESCHEDULE', To: '+15559876543' }));
+
+    expect(m.initiateRescheduleFlow).not.toHaveBeenCalled();
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '+15551234567' }),
+    );
+    expect(m.createEscalation).not.toHaveBeenCalled(); // informative dead-end, not an incident
+  });
+
+  it('confirm intent passes a real booking lookup into confirmReschedule', async () => {
+    const worker = await loadWorker();
+    m.parseIntent.mockReturnValue({ intent: 'confirm', confidence: 0.99 });
+    m.confirmReschedule.mockResolvedValue({ success: true });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
+
+    expect(m.confirmReschedule).toHaveBeenCalledTimes(1);
+    expect(m.confirmReschedule).toHaveBeenCalledWith(
+      '+15551234567',
+      expect.anything(),
+      expect.any(Function),
+      expect.any(Function),
+    );
   });
 });

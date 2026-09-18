@@ -11,6 +11,7 @@ import {
   appendMessage,
 } from '../services/conversation-domain.js';
 import { resolveOrganizationIdByTwilioNumber } from '../services/organization-service.js';
+import { findBookingById, findBookingByPhone, findUserProfile } from '../services/booking-service.js';
 
 /** Handler for `type = 'inbound_sms'` (build-sequence.md Step 8). */
 
@@ -104,7 +105,7 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
 
   switch (intent) {
     case 'reschedule': {
-      await handleRescheduleIntent(customerPhone, body);
+      await handleRescheduleIntent(organizationId, customerPhone, body);
       break;
     }
 
@@ -118,7 +119,7 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
     }
 
     case 'confirm': {
-      await handleConfirmIntent(customerPhone);
+      await handleConfirmIntent(organizationId, customerPhone);
       break;
     }
 
@@ -151,10 +152,32 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
  * Enter the reschedule flow: find the booking (TODO: wire to real store),
  * query available slots, pick 3, create conversation state, send offer SMS.
  */
-async function handleRescheduleIntent(customerPhone: string, _body: string): Promise<void> {
+async function handleRescheduleIntent(
+  organizationId: string,
+  customerPhone: string,
+  _body: string,
+): Promise<void> {
   try {
-    // TODO: look up bookingId from conversation state or booking store.
-    const bookingId = 'TODO-from-store';
+    // CP04: resolve the booking id from conversation state when mid-flow,
+    // otherwise fall back to the customer's most recent booking.
+    let bookingId: string | null = null;
+    try {
+      const conv = await getConversationByPhone(customerPhone);
+      if (conv?.bookingId) bookingId = conv.bookingId;
+    } catch {
+      bookingId = null;
+    }
+    if (!bookingId) {
+      const booking = await findBookingByPhone(organizationId, customerPhone);
+      bookingId = booking?.id ?? null;
+    }
+
+    if (!bookingId) {
+      // Informative dead-end, not an escalation - no booking under this number.
+      await sendNoMatchingBookingSms(customerPhone);
+      return;
+    }
+
     await initiateRescheduleFlow(
       bookingId,
       customerPhone,
@@ -163,8 +186,8 @@ async function handleRescheduleIntent(customerPhone: string, _body: string): Pro
         cal.freebusy.query({ requestBody: { timeMin: tMin, timeMax: tMax, items: [{ id: calId }] } }),
       (cal: any, calId: string, tMin: string, tMax: string) =>
         cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true, orderBy: 'startTime' }),
-      (id: string) => Promise.resolve(null), // TODO: real booking lookup
-      (id: string) => Promise.resolve(null), // TODO: real user lookup
+      (id: string) => findBookingById(organizationId, id),
+      findUserProfile,
       sendSms as Parameters<typeof initiateRescheduleFlow>[7],
     );
   } catch (err) {
@@ -191,13 +214,16 @@ async function handleSlotChoiceIntent(customerPhone: string, choice: number): Pr
 /**
  * Validate conversation state, create calendar event, mark booking confirmed.
  */
-async function handleConfirmIntent(customerPhone: string): Promise<void> {
+async function handleConfirmIntent(
+  organizationId: string,
+  customerPhone: string,
+): Promise<void> {
   try {
     const result = await confirmReschedule(
       customerPhone,
       defaultAuth,
       (cal: any, calId: string, event: any) => cal.events.insert({ calendarId: calId, requestBody: event }),
-      (id: string) => Promise.resolve(null), // TODO: real booking lookup
+      (id: string) => findBookingById(organizationId, id),
     );
     if (!result.success) {
       console.error('[worker] confirmReschedule failed:', result.error);
