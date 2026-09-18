@@ -8,8 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./providers": "./src/providers/index.ts",
-    "./schema": "./src/schema.ts",
-    "./classify": "./src/classify.ts"
+    "./structured": "./src/structured.ts"
   },
   "scripts": {
     "test": "vitest run",

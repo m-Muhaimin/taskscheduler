@@ -8,7 +8,7 @@ import type { AIProvider, AiUsage } from "./provider.js";
 import { RuleBasedFallbackProvider } from "./fallback.js";
 import { OpenAiProvider } from "./providers/openai-adapter.js";
 import { OllamaLlmProvider } from "./providers/ollama-llm.js";
-import { CensusLlmProvider } from "./census-llm.js";
+import { CensusLlmProvider } from "./providers/census-llm.js";
 import type { Intent, IntentResult } from "@tradescheduler/shared";
 
 // ---------------------------------------------------------------------------

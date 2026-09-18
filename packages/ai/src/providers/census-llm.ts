@@ -9,12 +9,12 @@
  *      fields is caught, not silently accepted)
  *   5. Maps API errors → AiError kinds the compose layer can match on
  *
- *  NOT a final choice — replace census-llm.ts with another adapter file and
+ *  NOT a final choice — drop in another adapter file and
  *  update createProvider()'s map. The interface is what the rest of P0 depends
  *  on, not the provider name. */
 
 import { z } from "zod";
-import type { AIProvider, AiUsage, AiError, ProviderMetadata } from "./provider.js";
+import type { AIProvider, AiUsage, AiError, ProviderMetadata } from "../provider.js";
 
 // ---------------------------------------------------------------------------
 // Census request/response types — narrow around what we actually use
