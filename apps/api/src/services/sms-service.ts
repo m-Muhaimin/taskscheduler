@@ -29,18 +29,30 @@ export interface SentSms {
 }
 
 export async function sendSms(input: SendSmsInput): Promise<SentSms> {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!accountSid || !authToken) {
-    throw new Error('Twilio credentials not configured (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN)');
-  }
-
   const from = input.from ?? process.env.TWILIO_PHONE_NUMBER;
   if (!from) {
     throw new Error('Twilio outbound number not configured (TWILIO_PHONE_NUMBER or `from`)');
   }
   if (!input.to) {
     throw new Error('sendSms: `to` is required');
+  }
+
+  // Local-dev dry run (TWILIO_SMS_DRY_RUN=true): skip Twilio and creds
+  // entirely, logging what WOULD be sent. Used to smoke-test SMS flows
+  // without real messages or creds. Logs the body on purpose (dev-only;
+  // the real-send trail below stays PII-free).
+  if (process.env.TWILIO_SMS_DRY_RUN === 'true') {
+    console.log(
+      '[sms:dry-run] would send',
+      JSON.stringify({ to: input.to, from, body: input.body }),
+    );
+    return { messageSid: `dry-run-${Date.now()}`, status: 'queued' };
+  }
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!accountSid || !authToken) {
+    throw new Error('Twilio credentials not configured (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN)');
   }
 
   const client = twilio(accountSid, authToken);

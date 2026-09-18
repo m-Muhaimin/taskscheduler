@@ -33,6 +33,7 @@ afterEach(() => {
   delete process.env.TWILIO_ACCOUNT_SID;
   delete process.env.TWILIO_AUTH_TOKEN;
   delete process.env.TWILIO_PHONE_NUMBER;
+  delete process.env.TWILIO_SMS_DRY_RUN;
 });
 
 describe('sendSms', () => {
@@ -81,5 +82,30 @@ describe('sendSms', () => {
     mocks.create.mockRejectedValue(new Error('twilio api boom'));
 
     await expect(sendSms({ to: '+15559876543', body: 'Hi!' })).rejects.toThrow('twilio api boom');
+  });
+
+  it('dry-runs without Twilio when TWILIO_SMS_DRY_RUN=true (no creds needed)', async () => {
+    delete process.env.TWILIO_ACCOUNT_SID;
+    delete process.env.TWILIO_AUTH_TOKEN;
+    process.env.TWILIO_SMS_DRY_RUN = 'true';
+
+    const result = await sendSms({ to: '+15559876543', from: '+15551234567', body: 'Hi!' });
+
+    expect(result.messageSid).toMatch(/^dry-run-/);
+    expect(result.status).toBe('queued');
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('dry-run still validates the recipient and from', async () => {
+    process.env.TWILIO_SMS_DRY_RUN = 'true';
+    delete process.env.TWILIO_PHONE_NUMBER;
+
+    await expect(sendSms({ to: '+15559876543', body: 'Hi!' })).rejects.toThrow(
+      /TWILIO_PHONE_NUMBER/,
+    );
+    await expect(sendSms({ to: '', from: '+15551234567', body: 'Hi!' })).rejects.toThrow(
+      /`to` is required/,
+    );
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 });

@@ -410,8 +410,17 @@ describe('reschedule-service', () => {
       );
       mockBookingLookup.mockResolvedValue(makeBooking('pending'));
       mockCreateEscalation.mockClear();
+      // afterEach's restoreAllMocks strips the module-level impl after the first
+      // test — re-establish it here so auth works in any run order.
+      mockAuthFn.mockResolvedValue({
+        client: {
+          freebusy: { query: vi.fn() },
+          events: { list: vi.fn(), insert: vi.fn() },
+        },
+        calendarId: CALENDAR_ID,
+      });
 
-      const createEventFn = vi.fn().mockResolvedValue({ id: 'cal-evt-confirmed-1' });
+      const createEventFn = vi.fn().mockResolvedValue({ data: { id: 'cal-evt-confirmed-1' } });
 
       const result = await confirmReschedule(
         CUSTOMER_PHONE,

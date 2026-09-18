@@ -15,7 +15,7 @@
 import { sendSms, type SendSmsInput } from './sms-service.js';
 import { createCalendarEvent, type AuthFn, type CreateEventFn, type FreeBusyFn, type ListEventsFn } from './calendar-service.js';
 import { createEscalation, type CreateEscalationInput } from './escalation-service.js';
-import { createConversation, getConversation, updateConversation, type UpdateConversationInput } from './conversation-service.js';
+import { createConversation, getConversationByPhone, updateConversation, type UpdateConversationInput } from './conversation-service.js';
 import { schedulingEngine } from './scheduling-engine.js';
 import type {
   AvailableSlot,
@@ -213,7 +213,7 @@ export async function initiateRescheduleFlow(
 export async function processSlotChoice(
   phone: string,
   choice: number,
-  conversationLookupFn: ConversationLookupFn = getConversation,
+  conversationLookupFn: ConversationLookupFn = getConversationByPhone,
   conversationUpdateFn: ConversationUpdateFn = updateConversation,
   smsSendFn: SmsSendFn = defaultSendSms,
 ): Promise<ConversationState | null> {
@@ -275,7 +275,7 @@ export async function confirmReschedule(
   authFn: AuthFn,
   createEventFn: CreateEventFn,
   bookingLookupFn: BookingLookupFn,
-  conversationLookupFn: ConversationLookupFn = getConversation,
+  conversationLookupFn: ConversationLookupFn = getConversationByPhone,
   conversationUpdateFn = updateConversation,
   smsSendFn: SmsSendFn = defaultSendSms,
   createEscalationFn = createEscalation,

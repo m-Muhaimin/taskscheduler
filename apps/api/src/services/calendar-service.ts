@@ -134,7 +134,10 @@ export async function defaultAuth(userId: string, calendarId: string): Promise<C
     events: calendar.events as CalendarClient['events'],
   };
 
-  return { client: castClient, calendarId };
+  // CP06 live-path fix: a caller may ask for the primary calendar with ''.
+  // Resolve to the calendar stored at connect time (fallback 'primary')
+  // so discovery flows (getAvailableSlots, createCalendarEvent) get a real id.
+  return { client: castClient, calendarId: calendarId || creds.calendarId || 'primary' };
 }
 
 export function defaultFreeBusy(
@@ -451,6 +454,11 @@ export async function createCalendarEvent(
   const authResult = await authFn(userId, calendarId);
   const client = authResult.client;
 
+  // CP06 live-path fix: the reschedule confirm flow calls with calendarId ''
+  // and expects the auth result to resolve the real calendar (mirrors
+  // getAvailableSlots). Fall back to the auth-resolved id, then 'primary'.
+  const effectiveCalendarId = calendarId || authResult.calendarId || 'primary';
+
   const event: Record<string, unknown> = {
     summary: booking.serviceDescription,
     description: `Booking #${booking.id}\nCustomer: ${booking.customerName} (${booking.customerPhone})\nService: ${booking.serviceDescription}`,
@@ -465,7 +473,7 @@ export async function createCalendarEvent(
     },
   };
 
-  const result = await createEventFn(client, calendarId, event);
+  const result = await createEventFn(client, effectiveCalendarId, event);
   if (!result.data.id) {
     throw new Error('Calendar event created without an ID');
   }

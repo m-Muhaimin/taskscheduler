@@ -91,7 +91,9 @@ export async function createConversation(input: CreateConversationInput): Promis
       input.userId,
       input.bookingId,
       input.state,
-      input.offeredSlots,
+      // pg serializes JS arrays as Postgres array literals ('{"...","..."}'),
+      // NOT JSON — pre-stringify so the json column gets valid JSON.
+      input.offeredSlots ? JSON.stringify(input.offeredSlots) : null,
       input.escalationReason,
     ],
   );
@@ -151,7 +153,8 @@ export async function updateConversation(
   }
   if (input.offeredSlots !== undefined) {
     sets.push(`offered_slots = $${idx++}`);
-    values.push(input.offeredSlots);
+    // Same pre-stringify as createConversation (pg array-literal trap).
+    values.push(input.offeredSlots ? JSON.stringify(input.offeredSlots) : null);
   }
   if (input.selectedSlot !== undefined) {
     sets.push(`selected_slot = $${idx++}`);

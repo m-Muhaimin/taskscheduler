@@ -97,3 +97,48 @@ Verified live: API boots, `/api/health` ok, `/api/auth/google/start` → 401
 Notable local-dev gap: `.env` has **no `JWT_SECRET`**, so JWT-issuing routes
 (login/register) and JWT-gated calls (start/status/delete, web) can't fully
 run locally until one is added — pre-existing, out of scope here.
+
+
+---
+
+## Addendum 3 — Live SMS-worker smoke test + the bugs it caught (2026-09-19)
+
+Ran the full reschedule journey through the REAL worker against local Postgres + the
+connected Google account, with `TWILIO_SMS_DRY_RUN=true`:
+
+1. `RESCHEDULE` → offer SMS (3 real freebusy-derived slots), conversation `offering_slots`
+2. `1` → confirm-ask SMS, conversation `awaiting_slot_choice` + selected slot
+3. `CONFIRM` → **real Google Calendar event inserted** (`n1ntt40tv4c4ii1repgoap9c84`),
+   booking → `confirmed` + moved to chosen slot, conversation `completed`
+
+All three jobs `completed` with zero errors; the new event is readable via the production
+auth path on `primary`, and all three outbound SMS bodies appeared in the dry-run log
+(offer, confirm-ask, confirmation with correct local time).
+
+### Bugs found & fixed (unit tests added/updated for each)
+1. **`createConversation` (and `updateConversation`) mangled `offered_slots`** — pg's
+   `prepareValue` serializes JS *arrays* as Postgres array literals, not JSON, so the
+   json column received invalid JSON. Fix: `JSON.stringify` before parameter binding.
+2. **`processSlotChoice` / `confirmReschedule` looked conversations up by ID with a
+   phone** — defaults were `getConversation` (uuid keyed) but callers pass the phone
+   (`invalid input syntax for type uuid`). Fix: defaults now `getConversationByPhone`.
+3. **`createCalendarEvent` inserted with `calendarId: ''`** — the reschedule confirm
+   path passes `''`; Google rejects it (unit tests mocked the event fn, hiding it).
+   Fix: resolve `calendarId || authResult.calendarId || 'primary'` (also makes
+   `defaultAuth` return the stored calendar id for `''`).
+4. **Stale test mock** — `confirmReschedule`'s success test resolved `{id}` but
+   `createCalendarEvent` needs `{data:{id}}` (matches the live Google contract).
+5. **Test-pollution flake (pre-existing)** — `afterEach` `restoreAllMocks()` stripped
+   the module-level `mockAuthFn` impl after the first test; the late-running success
+   test got `undefined` from auth. Fix: re-establish the impl in that test.
+6. **Worker env import path** — `src/worker/index.ts` imported `./env.js`
+   (nonexistent) instead of `../env.js`; the worker crashed at boot (CP06 env-loader
+   wiring landed after the earlier check).
+
+**New `TWILIO_SMS_DRY_RUN` seam** in `sms-service.ts` (`sendSms`): validates `to`/`from`
+first, then short-circuits before creds/Twilio with a `dry-run-*` messageSid and logs
+the would-be body. Used for the smoke test; no real SMS is ever sent without a consent
+record (CLAUDE.md hard rule).
+
+Test state: **all 238 service tests pass** (baseline 1 pre-existing failure fixed).
+Remaining baseline items unchanged: 2 tsc errors (RescheduleLogEntry, Escalation).

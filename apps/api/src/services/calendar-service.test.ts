@@ -358,6 +358,28 @@ describe('calendar-service', () => {
       expect(event.reminders).toBeDefined();
     });
 
+    it('resolves calendar id from the auth result when passed an empty string', async () => {
+      const mockClient = makeMockCalendarClient();
+      mockCreateEventFn.mockResolvedValue({ data: { id: 'new-evt-999' } });
+      const authFn: AuthFn = vi.fn().mockResolvedValue({
+        client: mockClient,
+        calendarId: 'primary',
+      });
+
+      const eventId = await createCalendarEvent(
+        'user-1',
+        '',
+        TEST_BOOKING,
+        authFn,
+        mockCreateEventFn,
+      );
+
+      expect(eventId).toBe('new-evt-999');
+      const calls = mockCreateEventFn.mock.calls;
+      expect(calls[0][0]).toBe(mockClient);
+      expect(calls[0][1]).toBe('primary');
+    });
+
     it('throws when auth fails', async () => {
       const failingAuthFn: AuthFn = vi.fn().mockRejectedValue(new Error('no token'));
 

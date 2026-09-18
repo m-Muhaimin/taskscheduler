@@ -1,4 +1,4 @@
-import './env.js';
+import '../env.js';
 import { complete, dequeue, fail } from '../services/queue-service.js';
 import type { QueueJob } from '../services/queue-service.js';
 import { processInboundSms } from './process-inbound-sms.js';
