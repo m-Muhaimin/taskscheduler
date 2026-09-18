@@ -1,32 +1,27 @@
 "use client"
 
-import { useRouter } from "next/navigation"
-
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { clearSessionCookie } from "@/lib/auth-client"
 import { deviceTimezone, tzAbbr } from "@/lib/format"
+import { useSession } from "@/lib/session"
 import { useDashboardData } from "@/lib/use-dashboard-data"
 
-/** Settings placeholder (brief §4.0): hours + SMS template drawn from fixtures. */
+/**
+ * Settings (brief §4.0). The account block is live (auth session); hours, phone
+ * and the SMS template are still fixtures — no profile API exists yet.
+ */
 export default function SettingsPage() {
-  const router = useRouter()
-  const { user, businessTz } = useDashboardData()
+  const { user, businessTz, sessionUser } = useDashboardData()
+  const { signOut } = useSession()
   const tz = deviceTimezone()
-
-  function signOut() {
-    clearSessionCookie()
-    router.replace("/login")
-    router.refresh()
-  }
 
   return (
     <div className="space-y-4">
       <Card>
         <CardContent>
           <CardTitle className="font-semibold">Business hours</CardTitle>
-          <CardDescription className="mt-1">When you take jobs.</CardDescription>
+          <CardDescription className="mt-1">When you take jobs. Sample data.</CardDescription>
           <div className="mt-3 flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Hours</span>
             <span className="font-medium tabular-nums">
@@ -62,18 +57,21 @@ export default function SettingsPage() {
       <Card>
         <CardContent>
           <CardTitle className="font-semibold">Account</CardTitle>
-          <CardDescription className="mt-1">
-            Sign out of the dashboard on this device.
-          </CardDescription>
-          <Button variant="outline" className="mt-3 h-11 w-full" onClick={signOut}>
+          <CardDescription className="mt-1">Signed in on this device.</CardDescription>
+          <div className="mt-3 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Name</span>
+            <span className="font-medium">{sessionUser?.displayName}</span>
+          </div>
+          <Separator className="my-3" />
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="shrink-0 text-muted-foreground">Email</span>
+            <span className="truncate font-medium">{sessionUser?.email}</span>
+          </div>
+          <Button variant="outline" className="mt-4 h-11 w-full" onClick={signOut}>
             Sign out
           </Button>
         </CardContent>
       </Card>
-
-      <p className="text-center text-xs text-muted-foreground">
-        Editing arrives in a later step.
-      </p>
     </div>
   )
 }

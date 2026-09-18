@@ -8,11 +8,11 @@ import {
   resolveEscalation,
   retryLoad,
   subscribe,
-  TRADE_LABEL,
   userFixture,
   type DashboardState,
   type LoadState,
 } from "@/lib/fixtures"
+import { useSession } from "@/lib/session"
 
 /**
  * DEV toggles (brief §10.3 AC3): `?state=loading|error` and `?empty=1` on any
@@ -42,14 +42,22 @@ export function useDashboardData() {
   const appState = useSyncExternalStore(subscribe, getDashboardState, getServerSnapshot)
   const override = useMemo(overrideFromLocation, [])
   const loadState: LoadState = override.loadState ?? appState.flags.loadState
+  /**
+   * Identity is real (auth session); the schedule around it is still fixtures.
+   * `sessionUser` is the signed-in tradesperson — `tradeLabel` is the display
+   * name threaded through job cards / SMS previews, so it follows the session.
+   */
+  const { user: sessionUser } = useSession()
 
   return {
     loadState,
     emptyToday: override.emptyToday ?? appState.flags.emptyToday,
     bookings: appState.bookings,
     escalations: appState.escalations,
+    /** Profile fields (phone, hours, SMS template) — fixtures until a profile API exists. */
     user: appState.user,
-    tradeLabel: TRADE_LABEL,
+    sessionUser,
+    tradeLabel: sessionUser?.displayName ?? "",
     businessTz: appState.user.businessHours.timezone,
     retry: retryLoad,
     markDone: markBookingDone,

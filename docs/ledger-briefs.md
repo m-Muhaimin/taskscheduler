@@ -199,3 +199,49 @@ Deferred: (1) live-DB run — no Postgres/Docker here, migration 004 unapplied, 
 the happy path is mocked-pg only; (2) non-httpOnly cookie risk + CSRF upgrade path
 (documented in docs/auth.md); (3) reviewer/vision pass when subagent fleet returns;
 (4) dashboard still renders fixtures — token isn't attached to dashboard fetches yet.
+
+## Auth — dashboard session wiring ✅ (2026-09-18)
+
+Wires the dashboard to the real session (identity live; schedule still fixtures).
+Follows the auth commit (81513c4) that landed login/register.
+
+Gate evidence:
+- [x] `npm run test --workspace=apps/web` — 11/11 session-core assertions
+      (no-token, 200, malformed body, non-JSON, 401, 404, 503, 500, 400, network
+      throw, and that Authorization: Bearer is attached; fetch injected, no server)
+- [x] browser E2E in headless Chrome via CDP — 12/12, against a stub API that keys
+      its /me response off the token value (no DB needed)
+- [x] SSR `/dashboard` + cookie → 200 with NO fixture data/identity in the HTML
+      (gate holds the shell back until the session resolves)
+- [x] gate unchanged: no cookie → `307 /login`; `/login` 200; build exit 0
+
+Changes:
+- `lib/session-core.ts` (new): `resolveSession(token, fetchImpl)` state machine —
+  React-free and document-free so it is testable headlessly. 401/404 → expired,
+  5xx → retryable error, 4xx/network → error, malformed 200 body → error.
+- `lib/session.tsx` (new): `SessionProvider`/`useSession`; resolves once per mount,
+  clears the cookie and redirects on "expired".
+- `components/session-gate.tsx` (new): holds the shell back while loading; renders
+  the error card (+ Try again) or nothing while redirecting.
+- `app/dashboard/layout.tsx`: wrapped in SessionProvider + SessionGate.
+- `lib/auth-client.ts`: added `getSessionToken()` + `authedFetch()`.
+- `lib/use-dashboard-data.ts`: exposes `sessionUser`; `tradeLabel` now comes from
+  the session display name instead of the `TRADE_LABEL` fixture.
+- `components/app-sidebar.tsx`: footer shows the live name + email.
+- `app/dashboard/settings/page.tsx`: Account card shows the live name/email;
+  sign-out goes through `useSession()`; profile cards labelled "Sample data".
+- `tests/session-core.test.mts` + `"test"` script in apps/web/package.json.
+- `tests/e2e/` (new): stub API + CDP harness + session-wiring scenario (no deps —
+  node 22+ global WebSocket).
+- `docs/auth.md`: session-wiring section, verification table, build-time gotcha.
+
+Finding worth remembering:
+- `API_BASE_URL` is baked into `.next/routes-manifest.json` at BUILD time —
+  setting it only for `next start` has no effect. Confirmed by inspecting the
+  manifest after each build; the E2E relies on it to aim the app at the stub.
+
+Result: identity is real end-to-end (login → dashboard shows the signed-in
+tradesperson; expired token bounces and cleans up; unconfigured server shows a
+retryable error with no fixture leak). Schedule + profile data remain fixtures.
+Deferred: profile/jobs API, httpOnly cookie + CSRF, reviewer/vision pass
+(subagent fleet still down).

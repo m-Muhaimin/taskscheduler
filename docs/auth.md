@@ -28,7 +28,7 @@ cross-site cookie handling) and no API URL is baked into client code.
 
 | Var | Default | Used by |
 | --- | --- | --- |
-| `API_BASE_URL` (web) | `http://localhost:3001` | next.config.ts rewrite target |
+| `API_BASE_URL` (web) | `http://localhost:3001` | next.config.ts rewrite target — **read at BUILD time, not runtime** |
 
 The API boots cleanly with zero env — it degrades to explicit 5xx, never a crash.
 
@@ -67,6 +67,47 @@ raised later without invalidating existing hashes).
   guard in `routes/dashboard/escalations.ts`; that route was left untouched.
 - The web stores the token in a **non-httpOnly** `ts_session` cookie
   (`lib/auth-client.ts`) — see Limitations.
+
+## Build-time gotcha: `API_BASE_URL` is baked in
+
+Next.js compiles `rewrites()` into `.next/routes-manifest.json` during `next build`.
+Setting `API_BASE_URL` only for `next start` does **nothing** — the shipped build keeps
+whatever destination it was compiled with. Point the proxy at a different API by
+setting the variable for the **build**:
+
+    API_BASE_URL=https://api.example.com npm run build
+
+Confirmed by inspecting `routes-manifest.json` after each build (see the E2E script
+header for how it is used to aim the app at a stub).
+
+## Session wiring (dashboard)
+
+`lib/session.tsx` resolves identity once per dashboard mount; `lib/session-core.ts`
+holds the branch logic and is deliberately React-free and `document`-free so it can
+be tested headlessly.
+
+| `resolveSession` sees | Status | Dashboard |
+| --- | --- | --- |
+| no token | `unauthenticated` | provider redirects to `/login` |
+| `200` + valid user | `authenticated` | shell renders with the real name/email |
+| `401` / `404` | `expired` | cookie cleared, redirect to `/login` |
+| `503` / `500` | `error` (retryable) | "Can't load your schedule" + Try again |
+| `400` / network failure | `error` | same, no retry on 4xx |
+
+Because the middleware gate checks **presence only**, a stale or forged cookie still
+reaches the shell — `SessionGate` is what turns that into a bounce. It also holds the
+shell back until the session is verified, so fixture content never flashes for a
+visitor whose token just expired (asserted server-side: `/dashboard` with a cookie
+returns 200 containing no fixture data).
+
+`useDashboardData()` now exposes `sessionUser` (live) and sources `tradeLabel` from
+`session.displayName` — the sidebar footer and SMS previews show the signed-in
+tradesperson. `user` (phone, hours, SMS template) is still `userFixture`: **sample
+data**, labelled as such in Settings, until a profile API exists. Schedule data
+(bookings, escalations) likewise remains fixtures.
+
+API calls must attach the token themselves — `authedFetch()` in `lib/auth-client.ts`
+does this; the API reads `Authorization`, not the cookie.
 
 ## Web gate
 
@@ -111,6 +152,21 @@ every data request. A forged cookie gets you a dashboard shell, not data.
   `401 missing_token`, bogus token `500 server_not_configured`.
 - API typechecks clean for all auth files.
 
+## Verified — session wiring
+
+| Gate | Result |
+| --- | --- |
+| `npm run test --workspace=apps/web` | **11/11** session-core assertions (every branch, injected fetch) |
+| Browser E2E (`tests/e2e/session-wiring.e2e.mjs`) | **12/12** in headless Chrome over CDP |
+| SSR `/dashboard` with a cookie | 200, contains no fixture data or identity |
+| Gate | no cookie → `307 /login`; `/login` → 200 |
+
+The E2E drives a real browser against a stub API keyed by token value, covering:
+login form → `/dashboard` with the real `displayName`; Settings showing the live
+email; `stub.expired` → bounce to `/login` **with the cookie cleared**;
+`stub.serverdown` → the error state **with no fixture schedule leaking**; sign-out
+→ `/login` with the cookie cleared.
+
 ## Limitations / next
 
 1. **Session cookie is JS-readable** (non-httpOnly), so XSS can exfiltrate it.
@@ -120,7 +176,9 @@ every data request. A forged cookie gets you a dashboard shell, not data.
 2. **No live-DB run yet.** No Postgres/Docker on this machine; migration 004 is
    unapplied. Happy path (register→login→me) is covered by mocked-pg HTTP tests
    but has never run against a real database. First Supabase run is unproven.
-3. **Dashboard data is still fixtures.** Nothing attaches the token to dashboard
-   fetches yet, and `/api/auth/me` isn't consumed — no signed-in identity in the UI.
+3. **Schedule data is still fixtures.** Identity is now live (`/api/auth/me`), but
+   bookings/escalations and the profile fields (phone, hours, SMS template) are
+   fixture-backed — no jobs/profile API exists. `authedFetch()` is in place for when
+   one lands.
 4. Password reset, email verification, rate limiting on login, and account
    lockout are not implemented.

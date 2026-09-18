@@ -1,12 +1,14 @@
 "use client"
 
 /**
- * Shared client-side auth helpers for the login/register pages.
+ * Shared client-side auth helpers used by the login/register pages and the
+ * dashboard session layer.
  *
  * The session is a JWT issued by the API and carried in the `ts_session`
  * cookie (name shared with src/middleware.ts). The cookie is first-party
  * because /api/* is proxied through this origin (next.config.ts), so the
- * browser sends it on every request.
+ * browser sends it on every request — but the API reads the token from the
+ * `Authorization` header, so API calls must attach it explicitly.
  */
 
 export const SESSION_COOKIE = "ts_session"
@@ -23,6 +25,26 @@ export function setSessionCookie(token: string): void {
 
 export function clearSessionCookie(): void {
   document.cookie = `${SESSION_COOKIE}=; path=/; max-age=0; samesite=lax`
+}
+
+/** Raw session token from the `ts_session` cookie, or null when absent. */
+export function getSessionToken(): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie
+    .split("; ")
+    .find((part) => part.startsWith(`${SESSION_COOKIE}=`))
+  if (!match) return null
+  const value = decodeURIComponent(match.slice(SESSION_COOKIE.length + 1))
+  return value.length > 0 ? value : null
+}
+
+/** `fetch` with the session token attached as `Authorization: Bearer …`.
+ *  Callers own the response: 401 handling belongs to the session layer. */
+export function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers)
+  const token = getSessionToken()
+  if (token) headers.set("authorization", `Bearer ${token}`)
+  return fetch(path, { ...init, headers })
 }
 
 /** Maps an auth API failure onto copy a tradesperson can act on. */

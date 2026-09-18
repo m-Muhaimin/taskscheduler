@@ -37,7 +37,7 @@ function isActive(pathname: string, url: string): boolean {
 /** sidebar-07-style collapsible sidebar, desktop only (brief §4.0 / §9 Q7). */
 export function AppSidebar() {
   const pathname = usePathname()
-  const { user, tradeLabel, escalations } = useDashboardData()
+  const { user, tradeLabel, escalations, sessionUser } = useDashboardData()
   const pendingEscalations = escalations.filter((e) => e.status === "pending").length
 
   return (
@@ -80,6 +80,7 @@ export function AppSidebar() {
       <SidebarFooter>
         <div className="flex flex-col gap-0.5 px-2 py-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
           <span className="truncate font-medium text-foreground">{tradeLabel}</span>
+          <span className="truncate">{sessionUser?.email}</span>
           <span className="tabular-nums">
             {user.businessHours.start}–{user.businessHours.end}
           </span>

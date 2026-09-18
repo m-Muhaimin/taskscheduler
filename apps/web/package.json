@@ -6,7 +6,8 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "tsx tests/session-core.test.mts"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
