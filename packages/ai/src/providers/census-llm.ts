@@ -15,6 +15,7 @@
 
 import { z } from "zod";
 import type { AIProvider, AiUsage, AiError, ProviderMetadata } from "../provider.js";
+import { withRetry } from "../retry.js";
 
 // ---------------------------------------------------------------------------
 // Census request/response types — narrow around what we actually use
@@ -77,7 +78,7 @@ export class CensusLlmProvider implements AIProvider {
       temperature: this.temperature,
     };
 
-    const response = await this.post(msg, /*structured*/ false);
+    const response = await withRetry(() => this.post(msg, /*structured*/ false));
     const decoded = decodeText(response);
     return { text: decoded.text, usage: decoded.usage };
   }
@@ -107,7 +108,7 @@ export class CensusLlmProvider implements AIProvider {
       temperature: this.temperature,
     };
 
-    const response = await this.post(msg, /*structured*/ true);
+    const response = await withRetry(() => this.post(msg, /*structured*/ true));
     const raw = response.choices[0]?.message?.content;
     if (typeof raw !== "string" || raw.trim().length === 0) {
       throw { kind: "provider_unavailable", message: "empty response from Census", retryable: true } as AiError;

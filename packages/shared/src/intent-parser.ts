@@ -63,7 +63,7 @@ function isConfirm(s: string): boolean {
     "that'll work", 'that will work', 'count me in', 'confirm it',
     'confirm the booking', 'confirm my booking', 'confirm appointment',
     'book it', 'booked', 'lock it in', 'lock it', 'lets do it',
-    "let\\'s do it", 'do it', 'go for it',
+    "let\'s do it", 'do it', 'go for it',
   ];
   if (confirmPhrases.includes(s)) return true;
   if (s.startsWith('confirm')) return true;

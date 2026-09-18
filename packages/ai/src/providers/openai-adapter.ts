@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AIProvider, AiUsage, ProviderMetadata, AiError } from '../provider.js';
+import { withRetry } from '../retry.js';
 
 // ---------------------------------------------------------------------------
 // OpenAI adapter — first-class real provider (Structured Outputs)
@@ -86,7 +87,7 @@ export class OpenAiProvider implements AIProvider {
       temperature: this.temperature,
     };
 
-    const response = await this.post(msg);
+    const response = await withRetry(() => this.post(msg));
     return decodeResponse(response);
   }
 
@@ -115,7 +116,7 @@ export class OpenAiProvider implements AIProvider {
       temperature: this.temperature,
     };
 
-    const response = await this.post(msg);
+    const response = await withRetry(() => this.post(msg));
     const raw = response.choices[0]?.message?.content;
     if (typeof raw !== 'string' || raw.trim().length === 0) {
       throw { kind: 'provider_unavailable', message: 'OpenAI returned empty response', retryable: true } as AiError;

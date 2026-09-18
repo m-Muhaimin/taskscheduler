@@ -116,6 +116,13 @@ describe('parseIntent — confirm signals', () => {
     expect(parseIntent('ok')).toEqual({ intent: 'confirm', confidence: 0.95 });
   });
 
+  it("recognizes \"let's do it\" (apostrophe form)", () => {
+    // Regression: the shared parser copy once stored a literal backslash
+    // ("let\'s do it") that never matched real SMS text. Both copies now live
+    // in @tradescheduler/shared and must hit this phrase.
+    expect(parseIntent("let's do it")).toEqual({ intent: 'confirm', confidence: 0.95 });
+  });
+
   it('recognizes "okay"', () => {
     expect(parseIntent('okay')).toEqual({ intent: 'confirm', confidence: 0.95 });
   });
