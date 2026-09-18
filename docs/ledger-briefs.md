@@ -137,3 +137,65 @@ Changes:
 
 Result: 15 files changed, +38/−61 net (duplication collapsed into single sources).
 Deferred: reviewer/vision pass when subagent fleet returns (credits issue).
+
+## Auth — JWT login/register (full stack) ✅ (2026-09-18)
+
+Scope (user-selected): full JWT stack — shared types + DB + API + web pages.
+
+Gate evidence:
+- [x] `vitest run --workspace=apps/api`: auth suites 26/26 green
+      (services/auth-service 9, routes/auth 17 — real HTTP server, mocked `pg`)
+- [x] API typecheck: zero errors in any auth file
+      (remaining errors are pre-existing, all inside the uncommitted Step-9
+      reschedule-service / process-inbound-sms track — not touched)
+- [x] `npm run build --workspace=apps/web` exit 0 — `/login` 3.51 kB,
+      `/register` 3.7 kB, Middleware 34.1 kB
+- [x] prod :3100 gate matrix — no cookie: `/dashboard` + `/dashboard/escalations`
+      `307 → /login`; with cookie: `/dashboard` `200`, `/login` + `/register`
+      `307 → /dashboard`; bare `/login` + `/register` `200`
+- [x] prod :3100 proxy contract through the rewrite: login/register →
+      `503 server_not_configured` (no env), malformed body → `400 invalid_body`,
+      short password → `400`, `/me` no token → `401 missing_token`,
+      `/me` bogus token → `500 server_not_configured`, `/api/health` → `200`
+
+Changes:
+- `packages/shared/src/types.ts`: `AuthUser`, `LoginRequest`, `RegisterRequest`,
+  `AuthResponse`, `AuthError` union, `AuthErrorResponse`.
+- `apps/api/src/db/migrations/004-create-tradespeople-table.sql` (new):
+  `ts_tradespeople` — uuid pk, unique lowercased email, `display_name` 1–80,
+  `password_hash`; RLS enabled, `anon`/`authenticated` revoked.
+- `apps/api/src/services/auth-service.ts` (new): scrypt
+  (`N=16384,r=8,p=1`, 64-byte key, 16-byte salt, `timingSafeEqual`), stored as
+  `scrypt$N$r$p$salt$hash`; lazy memoized pool; find-by-email / find-by-id /
+  create. No new dependencies.
+- `apps/api/src/middleware/auth.ts` (new): `requireAuth` — Bearer JWT → `req.auth`;
+  mirrors the escalations inline guard (that route left untouched).
+- `apps/api/src/routes/auth.ts` (new): `POST /register` 201 / 400 / 409 / 503 / 500,
+  `POST /login` 200 / 401 (no enumeration), `GET /me` 200 / 401 / 404; zod
+  validation; 7-day HS256 token, `sub` = id.
+- `apps/api/src/app.ts`: mounts `/api/auth` before the twilio/dashboard mounts.
+- `apps/web/next.config.ts`: `/api/:path*` → `API_BASE_URL` (default :3001) so the
+  session cookie is first-party (no CORS).
+- `apps/web/src/middleware.ts` (new): `ts_session` presence gate.
+- `apps/web/src/lib/auth-client.ts` (new): cookie set/clear + status→copy mapping.
+- `apps/web/src/app/login/page.tsx`, `app/register/page.tsx` (new): design-system
+  forms (Card/Input/Label/Button/Alert), 44px targets, loading + error states.
+- `apps/web/src/app/layout.tsx`: now bare; shell moved to
+  `apps/web/src/app/dashboard/layout.tsx` (new) so auth pages render standalone.
+- `apps/web/src/app/dashboard/settings/page.tsx`: Account card + Sign out.
+- `docs/auth.md` (new, 126 lines): endpoints, env, hashing params, gate matrix,
+  verification, limitations.
+
+Bugs fixed while building:
+- `guarded()` was `async`, so it returned `Promise<handler>` and Express threw
+  `TypeError: argument handler must be a function` — made synchronous.
+- scrypt `N=32768` hit OpenSSL's 32 MiB default `maxmem`
+  (`ERR_CRYPTO_INVALID_SCRYPT_PARAMS`) — lowered to 16384, documented.
+- `GET /me` originally looked up by email — added `findTradespersonById`.
+
+Result: 20 files, ~1,700 lines. API boots with zero env and degrades to explicit
+5xx instead of crashing.
+Deferred: (1) live-DB run — no Postgres/Docker here, migration 004 unapplied, so
+the happy path is mocked-pg only; (2) non-httpOnly cookie risk + CSRF upgrade path
+(documented in docs/auth.md); (3) reviewer/vision pass when subagent fleet returns;
+(4) dashboard still renders fixtures — token isn't attached to dashboard fetches yet.
