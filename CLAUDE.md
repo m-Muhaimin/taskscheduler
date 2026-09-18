@@ -56,6 +56,7 @@ AI scheduling/dispatch assistant for solo tradespeople (plumbers, electricians, 
 - **UI**: Use shadcn/ui primitives; avoid hand-rolling basic components.
 
 ## Known Issues / Gotchas
-- **Payment Processor**: Currently unresolved (Stripe vs. Paddle). No payment code is implemented.
+- **Payment Processor**: Paddle (deposit/webhook implementation not yet built)
+- **npm audit (live)**: 2 vulnerabilities remain after non-force fix — `uuid` moderate chain via `googleapis@148.0.0` (fix path: googleapis major bump) and `postcss` high chain via `next@15.5.25` bundling postcss@8.4.31 (fix path: next major bump, documented in docs/tasks/v2/nextjs-upgrade.md). The sharp high-severity chain was resolved by `npm audit fix` (0.34.5 → 0.35.4). No `--force` used.
 - **Credentials**: `.env` was previously committed; ensure credentials are rotated and never committed again.
 - **Local DB**: Local development uses `embedded-postgres`. Refer to `docs/local-dev.md`.

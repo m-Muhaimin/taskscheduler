@@ -5,7 +5,8 @@
   "workspaces": [
     "apps/api",
     "apps/web",
-    "packages/shared"
+    "packages/shared",
+    "packages/ai"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\"",
@@ -13,7 +14,10 @@
     "install:all": "npm install"
   },
   "devDependencies": {
-    "concurrently": "9.1.2"
+    "@types/node": "^26.6.1",
+    "concurrently": "9.1.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
   },
   "packageManager": "npm@11.14.1"
 }

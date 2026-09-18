@@ -7,7 +7,7 @@
 import { Pool } from 'pg';
 import type { Escalation, EscalationType } from '@tradescheduler/shared';
 
-interface CreateEscalationInput {
+export interface CreateEscalationInput {
   type: EscalationType;
   customerPhone: string;
   content: string | null;

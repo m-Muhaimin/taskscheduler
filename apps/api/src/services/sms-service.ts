@@ -18,6 +18,11 @@ export interface SendSmsInput {
   body: string;
 }
 
+export interface SmsRecord {
+  direction: 'inbound' | 'outbound';
+  body: string;
+  timestamp: Date;
+}
 export interface SentSms {
   messageSid: string;
   status: string;

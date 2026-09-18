@@ -1,67 +1,66 @@
 /**
- * Local development database — real Postgres, no Docker, no admin rights.
+ * Local development database — connects to an already-running Postgres
+ * (default 5433 at P:/postgres_data), ensures the app database + Supabase
+ * roles exist, and applies migrations.
  *
- * `embedded-postgres` ships platform-specific Postgres binaries; this script
- * initialises a cluster inside the repo (gitignored) and starts it on 5432.
+ *   node scripts/local-db.mjs            # ensure DB + apply migrations
+ *   node scripts/local-db.mjs --reset    # drop+recreate the tradescheduler DB
  *
- *   node scripts/local-db.mjs            # start (stays in foreground)
- *   node scripts/local-db.mjs --reset    # wipe the cluster first
+ * Defaults:
+ *   LOCALDB_PORT     = 5433
+ *   LOCALDB_DATA_DIR = P:/postgres_data   (informational; used for logging only)
+ *   LOCALDB_DB_USER  = postgres
+ *   LOCALDB_DB_PASS  = postgres@1
  *
- * On start it also ensures the app database exists and applies the auth
- * migration, so a fresh cluster comes up ready to serve /api/auth.
+ * Override any of these via environment variables.
  *
- * Migrations NOT listed in MIGRATIONS below (the Step-9 escalations and
- * conversation_states DDL) are deliberately skipped — that work is incomplete
- * and its schema is still moving. Add them here once it lands.
+ * This does NOT start its own Postgres process — it expects one to already
+ * be running. The embedded-postgres package is kept as a transitive dep only.
  */
-import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
-import { readFileSync, existsSync, rmSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const apiRoot = resolve(here, "..");
-const dataDir = join(apiRoot, ".localdb", "data");
+const migrationsDir = join(apiRoot, "src", "db", "migrations");
 
-const PORT = Number(process.env.LOCALDB_PORT ?? 5432);
+const PORT = Number(process.env.LOCALDB_PORT ?? 5433);
 const DB_NAME = "tradescheduler";
 const DB_USER = "postgres";
-const DB_PASSWORD = "postgres";
+const DB_PASSWORD = "postgres@1";
+const DATA_DIR = process.env.LOCALDB_DATA_DIR ?? "P:/postgres_data";
 
-/** Auth migration only — see the note above. */
-const MIGRATIONS = ["004-create-tradespeople-table.sql"];
+/** All share-ready migrations that should run against a fresh local DB. */
+const MIGRATIONS = [
+  "001-create-jobs-table.sql",
+  "002-create-escalations-table.sql",
+  "003-create-conversation-states-table.sql",
+  "004-create-tradespeople-table.sql",
+];
 
 /** Supabase defines these roles; creating them keeps the migration verbatim. */
 const SUPABASE_ROLES = ["anon", "authenticated"];
 
 const log = (...a) => console.log("[local-db]", ...a);
 
-if (process.argv.includes("--reset") && existsSync(join(apiRoot, ".localdb"))) {
-  log("--reset: removing existing cluster");
-  rmSync(join(apiRoot, ".localdb"), { recursive: true, force: true });
+/** Probe the running Postgres and abort if unreachable. */
+async function probe() {
+  const client = new pg.Client({ host: "localhost", port: PORT, user: DB_USER, password: DB_PASSWORD, database: "postgres" });
+  try {
+    await client.connect();
+  } catch (e) {
+    throw new Error(`cannot connect to postgres on localhost:${PORT} — is it running? ${e instanceof Error ? e.message : e}`);
+  } finally {
+    await client.end();
+  }
+  log(`postgres reachable on :${PORT} (data dir: ${DATA_DIR})`);
 }
 
-const db = new EmbeddedPostgres({
-  databaseDir: dataDir,
-  port: PORT,
-  user: DB_USER,
-  password: DB_PASSWORD,
-  authMethod: "scram-sha-256",
-  persistent: true,
-  onLog: (m) => process.env.LOCALDB_VERBOSE && log(m.trim()),
-  onError: (e) => log("error:", e instanceof Error ? e.message : e),
-});
-
-/** Connect to the maintenance DB and run a statement list. */
+/** Connect to a database and run a statement list. */
 async function sql(statements, database = "postgres") {
-  const client = new pg.Client({
-    host: "localhost",
-    port: PORT,
-    user: DB_USER,
-    password: DB_PASSWORD,
-    database,
-  });
+  const client = new pg.Client({ host: "localhost", port: PORT, user: DB_USER, password: DB_PASSWORD, database });
   await client.connect();
   try {
     for (const statement of statements) await client.query(statement);
@@ -71,13 +70,7 @@ async function sql(statements, database = "postgres") {
 }
 
 async function ensureDatabase() {
-  const client = new pg.Client({
-    host: "localhost",
-    port: PORT,
-    user: DB_USER,
-    password: DB_PASSWORD,
-    database: "postgres",
-  });
+  const client = new pg.Client({ host: "localhost", port: PORT, user: DB_USER, password: DB_PASSWORD, database: "postgres" });
   await client.connect();
   try {
     const { rowCount } = await client.query(
@@ -87,6 +80,8 @@ async function ensureDatabase() {
     if (rowCount === 0) {
       await client.query(`create database ${DB_NAME}`);
       log(`created database ${DB_NAME}`);
+    } else {
+      log(`database ${DB_NAME} already exists`);
     }
   } finally {
     await client.end();
@@ -103,11 +98,12 @@ async function ensureSupabaseRoles() {
        end $$`,
     ]);
   }
+  log("supabase roles ready");
 }
 
 async function applyMigrations() {
   for (const file of MIGRATIONS) {
-    const path = join(apiRoot, "src", "db", "migrations", file);
+    const path = join(migrationsDir, file);
     if (!existsSync(path)) {
       log(`skip ${file} (not found)`);
       continue;
@@ -118,64 +114,17 @@ async function applyMigrations() {
 }
 
 async function main() {
-  // `initialise()` shells out to initdb, which refuses to touch a non-empty
-  // directory — so it must only run on a genuinely fresh cluster. Calling it
-  // unconditionally made every start after the first fail.
-  const fresh = !existsSync(join(dataDir, "PG_VERSION"));
-  if (fresh) {
-    log(`initialising cluster at ${dataDir}`);
-    await db.initialise();
-  }
-  // A hard kill leaves postmaster.pid behind and Postgres then refuses to
-  // start ("lock file already exists"). If the recorded PID is dead the lock
-  // is stale, so clear it.
-  const pidFile = join(dataDir, "postmaster.pid");
-  if (existsSync(pidFile)) {
-    // parseInt stops at the first non-digit, so no line splitting needed.
-    const pid = Number.parseInt(readFileSync(pidFile, "utf8"), 10);
-    let alive = false;
-    if (Number.isInteger(pid)) {
-      try {
-        process.kill(pid, 0);
-        alive = true;
-      } catch {
-        alive = false;
-      }
-    }
-    if (!alive) {
-      log(`clearing stale postmaster.pid (pid ${pid} is not running)`);
-      rmSync(pidFile, { force: true });
-    }
-  }
-
-  await db.start();
-  log(`postgres ${fresh ? "initialised and " : ""}listening on :${PORT}`);
-
+  await probe();
   await ensureDatabase();
   await ensureSupabaseRoles();
   await applyMigrations();
 
   log("");
-  log(`DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@localhost:${PORT}/${DB_NAME}`);
-  log("ready — press Ctrl+C to stop");
+  log(`DATABASE_URL=postgresql://${DB_USER}:***@localhost:${PORT}/${DB_NAME}`);
+  log("ready — API can now connect");
 }
-
-let stopping = false;
-async function shutdown() {
-  if (stopping) return;
-  stopping = true;
-  log("stopping...");
-  try {
-    await db.stop();
-  } catch (e) {
-    log("stop failed:", e instanceof Error ? e.message : e);
-  }
-  process.exit(0);
-}
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
 
 main().catch(async (err) => {
   log("fatal:", err instanceof Error ? err.message : err);
-  await shutdown();
+  process.exit(1);
 });

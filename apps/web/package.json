@@ -37,6 +37,7 @@
     "autoprefixer": "10.6.1",
     "postcss": "8.5.28",
     "tailwindcss": "4.3.3",
+    "tsx": "^4.19.4",
     "typescript": "5.9.3"
   }
 }
