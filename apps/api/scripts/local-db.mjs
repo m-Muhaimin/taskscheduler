@@ -38,6 +38,7 @@ const MIGRATIONS = [
   "002-create-escalations-table.sql",
   "003-create-conversation-states-table.sql",
   "004-create-tradespeople-table.sql",
+  "005-create-ai-usage-table.sql",
 ];
 
 /** Supabase defines these roles; creating them keeps the migration verbatim. */
