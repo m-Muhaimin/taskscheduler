@@ -107,7 +107,7 @@ export type CreateEventFn = (
 // Default implementations (real googleapis calls)
 // ---------------------------------------------------------------------------
 
-function defaultAuth(userId: string, calendarId: string): Promise<CalendarAuthResult> {
+export function defaultAuth(userId: string, calendarId: string): Promise<CalendarAuthResult> {
   return new Promise((resolve, reject) => {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,

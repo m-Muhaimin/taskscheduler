@@ -1,4 +1,5 @@
 import { initiateRescheduleFlow, processSlotChoice, confirmReschedule } from '../services/reschedule-service.js';
+import { defaultAuth } from '../services/calendar-service.js';
 import type { QueueJob } from '../services/queue-service.js';
 import { parseIntent } from '../services/intent-service.js';
 import { sendSms } from '../services/sms-service.js';
@@ -157,7 +158,7 @@ async function handleRescheduleIntent(customerPhone: string, _body: string): Pro
     await initiateRescheduleFlow(
       bookingId,
       customerPhone,
-      defaultAuth as Parameters<typeof initiateRescheduleFlow>[2],
+      defaultAuth,
       (cal: any, calId: string, tMin: string, tMax: string) =>
         cal.freebusy.query({ requestBody: { timeMin: tMin, timeMax: tMax, items: [{ id: calId }] } }),
       (cal: any, calId: string, tMin: string, tMax: string) =>
@@ -194,7 +195,7 @@ async function handleConfirmIntent(customerPhone: string): Promise<void> {
   try {
     const result = await confirmReschedule(
       customerPhone,
-      defaultAuth as Parameters<typeof confirmReschedule>[1],
+      defaultAuth,
       (cal: any, calId: string, event: any) => cal.events.insert({ calendarId: calId, requestBody: event }),
       (id: string) => Promise.resolve(null), // TODO: real booking lookup
     );

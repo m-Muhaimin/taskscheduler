@@ -135,19 +135,17 @@ describe('processInboundSms — CP03 wiring', () => {
     expect(m.parseIntent).not.toHaveBeenCalled();
   });
 
-  it('documented landmine: a reschedule intent escalates because defaultAuth is undefined', async () => {
-    // CP03 spec H.6: existing stubs stay as-is (that is CP04). Today the
-    // reschedule path throws ReferenceError on the undefined `defaultAuth`
-    // (pre-existing tsc error; docs/tasks/v2/fix-worker-defaultAuth.md) and
-    // the worker escalates instead of crashing the job loop.
+  it('reschedule intent reaches the real flow without a crash (defaultAuth landmine fixed)', async () => {
+    // fix-worker-defaultAuth.md: the real typed defaultAuth (calendar-service)
+    // replaces the undefined identifier. With the booking lookup still stubbed
+    // to null the flow dead-ends silently (initiateRescheduleFlow returns null) —
+    // that stub is removed by implement-booking-lookup.md.
     const worker = await loadWorker();
     m.parseIntent.mockReturnValue({ intent: 'reschedule', confidence: 0.95 });
 
     await worker.processInboundSms(job({ From: '+15551234567', Body: 'RESCHEDULE', To: '+15559876543' }));
 
-    expect(m.initiateRescheduleFlow).not.toHaveBeenCalled(); // defaultAuth throws first
-    expect(m.createEscalation).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'processing_error' }),
-    );
+    expect(m.initiateRescheduleFlow).toHaveBeenCalledTimes(1); // no ReferenceError
+    expect(m.createEscalation).not.toHaveBeenCalled(); // silent dead-end (booking stub null)
   });
 });
