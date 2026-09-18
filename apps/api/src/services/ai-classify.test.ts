@@ -9,9 +9,10 @@ import type { Intent } from "@tradescheduler/shared";
 // ---------------------------------------------------------------------------
 
 function mockProvider(overrides: {
-  structured?: ReturnType<AIProvider["generateStructured"]>;
-  text?: ReturnType<AIProvider["generateText"]>;
-  metadata?: ReturnType<AIProvider["metadata"]>;
+  /** Any vitest mock. Typed loosely because the double is cast to AIProvider below. */
+  structured?: unknown;
+  text?: unknown;
+  metadata?: unknown;
 } = {}): AIProvider {
   return {
     // When overrides.structured is provided (e.g. mockRejectedValue), use it

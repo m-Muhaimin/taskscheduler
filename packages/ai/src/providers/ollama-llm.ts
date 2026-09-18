@@ -23,7 +23,7 @@
  *  + update createProvider()'s map in compose.ts. */
 
 import { z } from "zod";
-import { AIProvider, type AiUsage, type ProviderMetadata, type AiError } from "./provider.js";
+import type { AIProvider, AiUsage, ProviderMetadata, AiError } from "../provider.js";
 
 // ---------------------------------------------------------------------------
 // Ollama request/response types — OpenAI-compat layer

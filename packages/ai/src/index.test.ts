@@ -85,8 +85,8 @@ describe("classifyStep — fallback to rule-based parser", () => {
       "req-3",
     );
 
-    expect(result.intentResult).toEqual({ intent: "unknown", confidence: 0.0 }); // rule parser result for "hello"
-    expect(result.source).toBe("rule");
+    expect(result.intentResult).toEqual({ intent: "unknown", confidence: 0.0 }); // rule parser also unknown for "hello" → terminal escalation
+    expect(result.source).toBe("escalation");
     expect(onEscalate).toHaveBeenCalledTimes(1);
     expect(onEscalate).toHaveBeenCalledWith(
       expect.objectContaining({

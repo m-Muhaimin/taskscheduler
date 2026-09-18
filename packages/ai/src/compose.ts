@@ -1,14 +1,14 @@
 /** Provider-agnostic usage + compose orchestration types that both the LLM
  *  path and the rule-based fallback path must agree on.
-
+ *
  *  These are defined here (not duplicated in fallback.ts) so there is exactly
  *  one source of truth for the types the compose pipeline is built on. */
 
-import { z } from "zod";
-import { AIProvider, type AiUsage } from "./provider.js";
-import { InboundParseSchema } from "./structured.js";
+import type { AIProvider, AiUsage } from "./provider.js";
 import { RuleBasedFallbackProvider } from "./fallback.js";
+import { OpenAiProvider } from "./providers/openai-adapter.js";
 import { OllamaLlmProvider } from "./providers/ollama-llm.js";
+import { CensusLlmProvider } from "./census-llm.js";
 import type { Intent, IntentResult } from "@tradescheduler/shared";
 
 // ---------------------------------------------------------------------------
@@ -55,28 +55,11 @@ export interface ClassifyContext {
 }
 
 // ---------------------------------------------------------------------------
-// Provider factory — picks the concrete adapter from env
+// Provider factory — picks the concrete adapter from env, with a programmatic
+// override for tests and wiring-time injection
 // ---------------------------------------------------------------------------
 
-export type ProviderMode = "ollama" | "fallback-only";
-
-/** Build the provider the compose layer will call. When AI_PROVIDER is
- *  `fallback-only` (or unset and no AI_API_KEY), this returns the rule-based
- *  fallback so the whole pipeline can be tested offline and the fallback path
- *  is the default. */
-export function createProvider(mode: ProviderMode, config?: ProviderConfig): AIProvider {
-  if (mode === "census") {
-    Invariant(`CENSUS_API_KEY is required when AI_PROVIDER=census`, config?.apiKey != null);
-    return new CensusLlmProvider(
-      config!.apiKey!,
-      config!.model ?? "census/llama-4-scout",
-      config!.baseUrl ?? "https://api.census.ai/v1",
-      config!.temperature ?? 0,
-    );
-  }
-  // fallback-only (default when AI_PROVIDER is unset or 'fallback-only')
-  return new RuleBasedFallbackProvider();
-}
+export type ProviderMode = "openai" | "ollama" | "census" | "fallback-only";
 
 export type ProviderConfig = {
   apiKey?: string;
@@ -85,8 +68,66 @@ export type ProviderConfig = {
   temperature?: number;
 };
 
+/** Build the provider the compose layer will call.
+ *
+ *  Selection order: explicit `mode` argument wins; otherwise AI_PROVIDER is
+ *  read from the environment. Unset or unknown → fallback-only (the rule-based
+ *  parser), so the pipeline runs offline and the fallback path is the default.
+ *
+ *  OpenAI/Census require their API key when selected — missing keys fail fast
+ *  at construction time (never silently degrade to the fallback when a real
+ *  provider was requested). Ollama accepts an empty key for local instances. */
+export function createProvider(mode?: ProviderMode, config?: ProviderConfig): AIProvider {
+  const selected: ProviderMode = mode ?? (parseProviderMode(process.env.AI_PROVIDER) ?? "fallback-only");
+
+  switch (selected) {
+    case "openai": {
+      const apiKey = config?.apiKey ?? process.env.OPENAI_API_KEY;
+      invariant(apiKey != null && apiKey !== "", "OPENAI_API_KEY is required when AI_PROVIDER=openai");
+      return new OpenAiProvider(
+        apiKey!,
+        config?.model ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+        config?.temperature ?? 0,
+      );
+    }
+    case "ollama": {
+      return new OllamaLlmProvider(
+        config?.model ?? process.env.OLLAMA_MODEL ?? "gemma4",
+        config?.baseUrl ?? process.env.OLLAMA_BASE_URL ?? "https://ollama.com",
+        config?.apiKey ?? process.env.OLLAMA_API_KEY ?? "",
+        config?.temperature ?? 0,
+      );
+    }
+    case "census": {
+      const apiKey = config?.apiKey ?? process.env.CENSUS_API_KEY;
+      invariant(apiKey != null && apiKey !== "", "CENSUS_API_KEY is required when AI_PROVIDER=census");
+      return new CensusLlmProvider(
+        apiKey!,
+        config?.model ?? process.env.CENSUS_MODEL ?? "census/llama-4-scout",
+        config?.baseUrl ?? process.env.CENSUS_BASE_URL ?? "https://api.census.ai/v1",
+        config?.temperature ?? 0,
+      );
+    }
+    case "fallback-only":
+    default:
+      return new RuleBasedFallbackProvider();
+  }
+}
+
 export type { AiError } from "./provider.js";
 
-function Invariant(condition: boolean, message: string): asserts condition {
+function parseProviderMode(raw: string | undefined): ProviderMode | undefined {
+  switch (raw) {
+    case "openai":
+    case "ollama":
+    case "census":
+    case "fallback-only":
+      return raw;
+    default:
+      return undefined;
+  }
+}
+
+function invariant(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }

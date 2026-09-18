@@ -14,7 +14,7 @@
  *  on, not the provider name. */
 
 import { z } from "zod";
-import { AIProvider, type AiUsage } from "./provider.js";
+import type { AIProvider, AiUsage, AiError, ProviderMetadata } from "./provider.js";
 
 // ---------------------------------------------------------------------------
 // Census request/response types — narrow around what we actually use

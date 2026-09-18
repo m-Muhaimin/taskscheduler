@@ -9,7 +9,7 @@
  *  with no external call. */
 
 import { z } from "zod";
-import { AIProvider, type AiUsage, type ProviderMetadata } from "./provider.js";
+import type { AIProvider, AiUsage, AiError, ProviderMetadata } from "./provider.js";
 import { parseIntent, type IntentResult, type Intent } from "@tradescheduler/shared";
 import { InboundParseSchema } from "./structured.js";
 
@@ -60,9 +60,3 @@ export class RuleBasedFallbackProvider implements AIProvider {
   }
 }
 
-type AiError =
-  | { kind: "provider_unavailable"; message: string; retryable: boolean }
-  | { kind: "schema_rejection"; raw: unknown; reason: string }
-  | { kind: "rate_limited"; message: string; retryAfter?: number }
-  | { kind: "auth"; message: string }
-  | { kind: "quota"; message: string };

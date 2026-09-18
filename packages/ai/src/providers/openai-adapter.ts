@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { AIProvider, type AiUsage, type ProviderMetadata } from '../provider.js';
-import { InboundParseSchema } from '../schema.js';
+import type { AIProvider, AiUsage, ProviderMetadata, AiError } from '../provider.js';
 
 // ---------------------------------------------------------------------------
 // OpenAI adapter — first-class real provider (Structured Outputs)

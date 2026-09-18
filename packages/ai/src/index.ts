@@ -15,7 +15,7 @@ import { parseIntent } from "@tradescheduler/shared";
 import type { AIProvider } from "./provider.js";
 import type { Intent, IntentResult } from "@tradescheduler/shared";
 import { InboundParseSchema } from "./structured.js";
-import { ClassifyResult, ClassifyContext, AiError } from "./compose.js";
+import type { ClassifyResult, ClassifyContext, AiError } from "./compose.js";
 
 // ---------------------------------------------------------------------------
 // Escalation input shape — defined here, not imported from apps/api.
@@ -196,9 +196,21 @@ function mapIntent(aiIntent: string): Intent {
   }
 }
 
-function normalizeError(err: unknown): AiError | null {
+function normalizeError(err: unknown): AiError {
   if (err && typeof err === "object" && "kind" in err) {
     return err as AiError;
   }
   return { kind: "provider_unavailable", message: String(err), retryable: true };
 }
+
+// ---------------------------------------------------------------------------
+// Public API surface — the package root re-exports everything consumers of
+// @tradescheduler/ai need: the dispatch entry (classifyStep), the provider
+// factory + metadata types, and the structured-output schema taxonomy.
+// ---------------------------------------------------------------------------
+
+export { createProvider, type ProviderMode, type ProviderConfig } from "./compose.js";
+export type { ClassifyResult, ClassifyContext } from "./compose.js";
+export type { AIProvider, AiError, AiUsage, ProviderMetadata } from "./provider.js";
+export { InboundParseSchema, AiIntentSchema } from "./structured.js";
+export type { InboundParseResult, AiIntent } from "./structured.js";

@@ -10,7 +10,7 @@
     "declaration": true,
     "outDir": "dist",
     "rootDir": "src",
-    "types": [],
+    "types": ["node"],
     "lib": ["ES2022"]
   },
   "include": ["src"],
