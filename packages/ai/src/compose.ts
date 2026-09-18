@@ -29,7 +29,7 @@ import type { Intent, IntentResult } from "@tradescheduler/shared";
 export interface ClassifyResult {
   intentResult: IntentResult;
   aiUsage: AiUsage | null;
-  source: "llm" | "rule" | "context" | "escalation";
+  source: "llm" | "rule" | "context" | "escalation" | "merged";
   /** Stable request id for the classify call — use for tieing logs + cost
    *  records later. */
   requestId: string;

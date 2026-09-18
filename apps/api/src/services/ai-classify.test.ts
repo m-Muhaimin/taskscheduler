@@ -545,3 +545,112 @@ describe("classifyStep — existing rule-parser contract preserved", () => {
     expect(resultWithState.source).toBe("rule");
   });
 });
+
+// ---------------------------------------------------------------------------
+// classifyStep — superset guarantee (rule parser >= 0.9 overrides the LLM)
+// ---------------------------------------------------------------------------
+
+describe("classifyStep — superset guarantee (rule >= 0.9 overrides LLM)", () => {
+  it("merges when rule intent (>= 0.9) conflicts with a successful LLM result", async () => {
+    const provider = mockProvider({
+      structured: vi.fn().mockResolvedValue({
+        data: {
+          intent: "cancel",
+          confidence: 0.85,
+          customer_name: null,
+          service_description: null,
+          preferred_date: null,
+          preferred_time_start: null,
+          preferred_time_end: null,
+          urgency: undefined,
+          missing_information: [],
+          reasoning: "llm says cancel",
+        },
+        usage: { tokensInput: 12, tokensOutput: 6, model: "census/foo" },
+      }),
+    });
+    const onEscalate = vi.fn();
+
+    const result = await classifyStep(
+      provider,
+      { body: "reschedule", conversationStateExists: false, suggestedIntent: null },
+      onEscalate,
+      "req-20",
+    );
+
+    // Rule parser recognizes "reschedule" at 0.95 — deterministic keyword
+    // beats the LLM's cancel signal (mapIntent(cancel) → "unknown").
+    expect(result.intentResult).toEqual({ intent: "reschedule", confidence: 0.95 });
+    expect(result.source).toBe("merged");
+    // LLM usage is preserved — we already paid for the call.
+    expect(result.aiUsage).toEqual({ tokensInput: 12, tokensOutput: 6, model: "census/foo" });
+    expect(onEscalate).not.toHaveBeenCalled();
+  });
+
+  it("keeps the LLM result when rule and LLM agree on the intent", async () => {
+    const provider = mockProvider({
+      structured: vi.fn().mockResolvedValue({
+        data: {
+          intent: "reschedule",
+          confidence: 0.85,
+          customer_name: null,
+          service_description: null,
+          preferred_date: null,
+          preferred_time_start: null,
+          preferred_time_end: null,
+          urgency: undefined,
+          missing_information: [],
+          reasoning: "llm agrees",
+        },
+        usage: { tokensInput: 12, tokensOutput: 6, model: "census/foo" },
+      }),
+    });
+    const onEscalate = vi.fn();
+
+    const result = await classifyStep(
+      provider,
+      { body: "reschedule", conversationStateExists: false, suggestedIntent: null },
+      onEscalate,
+      "req-21",
+    );
+
+    expect(result.intentResult).toEqual({ intent: "reschedule", confidence: 0.85 });
+    expect(result.source).toBe("llm");
+    expect(result.aiUsage).toEqual({ tokensInput: 12, tokensOutput: 6, model: "census/foo" });
+    expect(onEscalate).not.toHaveBeenCalled();
+  });
+
+  it("does not override when the rule parser is not high-confidence (< 0.9)", async () => {
+    const provider = mockProvider({
+      structured: vi.fn().mockResolvedValue({
+        data: {
+          intent: "new_booking",
+          confidence: 0.8,
+          customer_name: null,
+          service_description: "AC repair",
+          preferred_date: null,
+          preferred_time_start: null,
+          preferred_time_end: null,
+          urgency: undefined,
+          missing_information: [],
+          reasoning: "llm sees a booking",
+        },
+        usage: { tokensInput: 9, tokensOutput: 3, model: "census/foo" },
+      }),
+    });
+    const onEscalate = vi.fn();
+
+    const result = await classifyStep(
+      provider,
+      { body: "I need my AC fixed tomorrow around 2pm", conversationStateExists: false, suggestedIntent: null },
+      onEscalate,
+      "req-22",
+    );
+
+    // mapIntent(new_booking) → "unknown"; rule parser has no >= 0.9 signal for
+    // this body → plain LLM path.
+    expect(result.source).toBe("llm");
+    expect(result.intentResult).toEqual({ intent: "unknown", confidence: 0.8 });
+    expect(onEscalate).not.toHaveBeenCalled();
+  });
+});

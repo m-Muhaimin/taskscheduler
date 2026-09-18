@@ -8,6 +8,14 @@
  *      Otherwise → fall through.
  *   4. Escalate + return { intent: 'unknown', confidence: 0.0 }.
  *
+ *  Superset guarantee (§3): the rule parser ALWAYS runs — including after an
+ *  LLM success. A rule intent at conf >= 0.9 overrides a conflicting LLM
+ *  result that would otherwise win (LLM conf >= 0.7): source "merged" with
+ *  LLM usage preserved, so a clear keyword can never be drowned out by LLM
+ *  drift. When rule and LLM agree, the LLM result stands untouched. When
+ *  the LLM was below 0.7, the rule parser wins through the plain fallback
+ *  (source "rule") instead.
+ *
  *  Never guess. Never let the LLM write state transitions directly (that
  *  boundary is enforced in Checkpoint 06, not here — here we only classify). */
 
@@ -66,28 +74,47 @@ export async function classifyStep(
     },
   );
 
-  if (llmResult?.error == null && llmResult?.final != null) {
-    // LLM produced a result. Respect the confidence threshold as in the policy.
-    if (llmResult.final.intentResult.confidence >= 0.7) {
-      return llmResult.final;
-    }
-    // LLM was unsure (conf < 0.7) — fall through to the rule parser.
-  }
-
-  // 3. Rule-based fallback.
+  // 3. Rule-based parser — ALWAYS runs. Deterministic keyword signals are the
+  //    superset guarantee (Checkpoint 01 §3).
   const ruleResult = await classifyWithRuleParser(context, requestId).catch(
     (err: unknown): { error: AiError | null; final: ClassifyResult | null } => {
       return { error: normalizeError(err), final: null };
     },
   );
 
-  if (ruleResult?.error == null && ruleResult?.final != null) {
-    if (ruleResult.final.intentResult.confidence >= 0.7) {
-      return ruleResult.final;
-    }
+  // 4. Superset guarantee — when the LLM result was strong enough to win
+  //    (>= 0.7), a conflicting rule intent at >= 0.9 beats it. The LLM's
+  //    usage is preserved (the call already happened); source "merged" =
+  //    rule intent + LLM cost. When rule and LLM agree, the LLM result
+  //    stands untouched. (LLM below 0.7 never triggers this — that case
+  //    falls through to step 6 and reports plain "rule".)
+  if (
+    llmResult?.error == null && llmResult?.final != null &&
+    llmResult.final.intentResult.confidence >= 0.7 &&
+    ruleResult?.error == null && ruleResult?.final != null &&
+    ruleResult.final.intentResult.confidence >= 0.9 &&
+    ruleResult.final.intentResult.intent !== llmResult.final.intentResult.intent
+  ) {
+    return {
+      intentResult: ruleResult.final.intentResult,
+      aiUsage: llmResult.final.aiUsage,
+      source: "merged",
+      requestId,
+    };
   }
 
-  // 4. Terminal fallback — escalate and return unknown.
+  // 5. LLM produced a result — respect the confidence threshold as in the
+  //    policy. (LLM was unsure with conf < 0.7 → fall through.)
+  if (llmResult?.error == null && llmResult?.final != null && llmResult.final.intentResult.confidence >= 0.7) {
+    return llmResult.final;
+  }
+
+  // 6. Rule-based fallback.
+  if (ruleResult?.error == null && ruleResult?.final != null && ruleResult.final.intentResult.confidence >= 0.7) {
+    return ruleResult.final;
+  }
+
+  // 7. Terminal fallback — escalate and return unknown.
   await onEscalate({
     type: (llmResult?.error?.kind === "provider_unavailable" || ruleResult?.error?.kind === "provider_unavailable")
       ? "processing_error"
