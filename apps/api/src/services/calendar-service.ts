@@ -21,6 +21,7 @@ import type {
   GetAvailableSlotsResult,
   OfferedSlot,
 } from '@tradescheduler/shared';
+import { loadCredentials } from './google-auth-service.js';
 
 // ---------------------------------------------------------------------------
 // Narrow calendar-client interface — satisfies both real googleapis.Calendar
@@ -66,8 +67,9 @@ export interface CalendarAuthResult {
 
 /**
  * Function signature for auth — swapped in tests.
- * In production this exchanges a refresh token for an access token and
- * builds a calendar client; in tests a stub returns a mock client.
+ * In production this builds the calendar client from the tradesperson's
+ * stored Google OAuth tokens (google-auth-service.loadCredentials);
+ * in tests a stub returns a mock client.
  */
 export type AuthFn = (userId: string, calendarId: string) => Promise<CalendarAuthResult>;
 
@@ -107,31 +109,32 @@ export type CreateEventFn = (
 // Default implementations (real googleapis calls)
 // ---------------------------------------------------------------------------
 
-export function defaultAuth(userId: string, calendarId: string): Promise<CalendarAuthResult> {
-  return new Promise((resolve, reject) => {
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI,
-    );
+export async function defaultAuth(userId: string, calendarId: string): Promise<CalendarAuthResult> {
+  const creds = await loadCredentials(userId);
+  if (!creds) {
+    throw new Error(`Google Calendar is not connected for user ${userId}. Connect it in Settings.`);
+  }
 
-    const refreshToken = process.env[`GOOGLE_REFRESH_TOKEN_${userId}`];
-    if (!refreshToken) {
-      return reject(new Error(`No Google refresh token configured for user ${userId}`));
-    }
-
-    oauth2Client.setCredentials({ refresh_token: refreshToken });
-
-    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-
-    // Cast the real google.calendars.Calendar to our narrow CalendarClient interface.
-    const castClient: CalendarClient = {
-      freebusy: calendar.freebusy as CalendarClient['freebusy'],
-      events: calendar.events as CalendarClient['events'],
-    };
-
-    resolve({ client: castClient, calendarId });
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI,
+  );
+  oauth2Client.setCredentials({
+    access_token: creds.accessToken,
+    refresh_token: creds.refreshToken,
+    expiry_date: creds.tokenExpiry ? Date.parse(creds.tokenExpiry) : undefined,
   });
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+  // Cast the real google.calendars.Calendar to our narrow CalendarClient interface.
+  const castClient: CalendarClient = {
+    freebusy: calendar.freebusy as CalendarClient['freebusy'],
+    events: calendar.events as CalendarClient['events'],
+  };
+
+  return { client: castClient, calendarId };
 }
 
 export function defaultFreeBusy(

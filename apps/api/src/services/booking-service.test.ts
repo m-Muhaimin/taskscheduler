@@ -220,4 +220,32 @@ describe('booking-service', () => {
       await expect(svc.findUserProfile('nope')).resolves.toBeNull();
     });
   });
+
+  describe('setUserGoogleCalendarId', () => {
+    it('updates the profile calendar id and reports success', async () => {
+      const svc = await loadService();
+      mocks.query.mockResolvedValueOnce({ rowCount: 1 });
+      await expect(svc.setUserGoogleCalendarId('user-1', 'primary')).resolves.toBe(true);
+      expect(mocks.query).toHaveBeenCalledWith(
+        expect.stringContaining('update public.ts_tradespeople'),
+        ['user-1', 'primary'],
+      );
+    });
+
+    it('clears the calendar id on disconnect', async () => {
+      const svc = await loadService();
+      mocks.query.mockResolvedValueOnce({ rowCount: 1 });
+      await expect(svc.setUserGoogleCalendarId('user-1', null)).resolves.toBe(true);
+      expect(mocks.query).toHaveBeenCalledWith(
+        expect.stringContaining('set google_calendar_id = $2'),
+        ['user-1', null],
+      );
+    });
+
+    it('returns false when the user row does not exist', async () => {
+      const svc = await loadService();
+      mocks.query.mockResolvedValueOnce({ rowCount: 0 });
+      await expect(svc.setUserGoogleCalendarId('nobody', 'primary')).resolves.toBe(false);
+    });
+  });
 });

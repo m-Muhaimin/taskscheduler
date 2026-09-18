@@ -268,3 +268,47 @@ export type AuthError =
 export type AuthErrorResponse = {
   error: AuthError;
 };
+
+// ── Google OAuth (real wiring; replaces GOOGLE_REFRESH_TOKEN_<userId> env) ──
+// The API stores Google OAuth tokens per tradesperson (ts_google_credentials)
+// and the web settings page drives the connect/disconnect flow via
+// /api/auth/google/*. AuthUser.id is the ts_tradespeople row id (creds.user_id).
+
+export type GoogleCredentials = {
+  /** ts_tradespeople.id of the owner. */
+  userId: string;
+  accessToken: string;
+  /** Present because the consent flow uses access_type=offline+prompt=consent. */
+  refreshToken: string;
+  /** ISO 8601 datetime; null when the token never expires / unknown. */
+  tokenExpiry: IsoString | null;
+  /** Granted Google scope string; null when unrecorded. */
+  scope: string | null;
+  /** Calendar identifier (e.g. 'primary') used by the pipeline. */
+  calendarId: string | null;
+};
+
+/** GET /api/auth/google/status response body. */
+export type GoogleConnectionStatus = {
+  connected: boolean;
+  calendarId: string | null;
+};
+
+/** GET /api/auth/google/start response body: goto `url` to begin consent. */
+export type GoogleAuthStartResponse = {
+  url: string;
+};
+
+export type GoogleOAuthError =
+  | 'invalid_body'
+  | 'missing_token'
+  | 'invalid_token'
+  | 'invalid_state'
+  | 'missing_google_config'
+  | 'google_denied'
+  | 'exchange_failed'
+  | 'server_not_configured';
+
+export type GoogleOAuthErrorResponse = {
+  error: GoogleOAuthError;
+};

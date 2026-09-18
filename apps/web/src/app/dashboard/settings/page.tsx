@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { GoogleCalendarCard } from "@/components/google-calendar-card"
 import { deviceTimezone, tzAbbr } from "@/lib/format"
 import { useSession } from "@/lib/session"
 import { useDashboardData } from "@/lib/use-dashboard-data"
@@ -53,6 +54,8 @@ export default function SettingsPage() {
           </p>
         </CardContent>
       </Card>
+
+      <GoogleCalendarCard />
 
       <Card>
         <CardContent>

@@ -213,3 +213,18 @@ export async function findUserProfile(userId: string): Promise<User | null> {
     },
   };
 }
+
+/** Sets the tradesperson's google_calendar_id (connect/disconnect bookkeeping).
+ *  `calendarId` null clears it. Returns false when the user row doesn't exist. */
+export async function setUserGoogleCalendarId(
+  userId: string,
+  calendarId: string | null,
+): Promise<boolean> {
+  const { rowCount } = await getPool().query(
+    `update public.ts_tradespeople
+        set google_calendar_id = $2
+      where id = $1`,
+    [userId, calendarId],
+  );
+  return (rowCount ?? 0) > 0;
+}
