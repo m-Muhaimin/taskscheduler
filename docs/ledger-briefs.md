@@ -245,3 +245,49 @@ tradesperson; expired token bounces and cleans up; unconfigured server shows a
 retryable error with no fixture leak). Schedule + profile data remain fixtures.
 Deferred: profile/jobs API, httpOnly cookie + CSRF, reviewer/vision pass
 (subagent fleet still down).
+
+## Dev — local Postgres, and the first real sign-in ✅ (2026-09-18)
+
+Closes the "migration 004 has never touched a real database" gap that has been
+open since the auth work started.
+
+Gate evidence:
+- [x] migration 004 applied to real Postgres 18.4; schema verified by query —
+      RLS enabled, grants to anon/authenticated NONE, both CHECK constraints and
+      the unique email index present
+- [x] API-level flow against the real DB: register 201, /me 200, login 200,
+      duplicate register 409, wrong password 401, unknown email 401 with a
+      byte-identical body (no enumeration), uppercase email stored normalized
+- [x] data-layer security check: scrypt$16384$8$1$ hashes with a distinct salt
+      per row, no plaintext substring, no duplicate emails
+- [x] browser flow on the real stack (web :3100 -> api :3001 -> Postgres) — 10/10
+      register -> dashboard identity -> settings -> reload keeps session ->
+      sign out -> log in again
+
+Changes:
+- `apps/api/scripts/local-db.mjs` (new) + `db:local` / `db:local:reset` scripts:
+  runs embedded Postgres (no Docker, no admin), creating the cluster, database,
+  Supabase roles, and applying the auth migration.
+- `docs/local-dev.md` (new): start/reset, credentials, the JWT-secret-restart
+  caveat, why anon/authenticated are created, and the migration allowlist.
+- `.gitignore`: `.localdb/`.
+- `embedded-postgres` devDependency — `^18.4.0-beta.17`, a caret range over a
+  *beta*, which is what npm resolves for this package. Narrow it to an exact
+  version if a dev tool that auto-updates across betas is unwelcome. Installing
+  it also alphabetised the dependency lists in apps/api/package.json; no
+  versions changed.
+
+Notes:
+- The migration's `revoke ... from anon, authenticated` needed those roles to
+  exist locally; creating them as NOLOGIN roles keeps the migration verbatim
+  rather than locally edited.
+- `MIGRATIONS` is an explicit allowlist. The Step-9 escalations /
+  conversation_states DDL is deliberately NOT applied — unapproved, still moving.
+- Restarting the API with a fresh JWT_SECRET invalidates all sessions; documented
+  so it is not mistaken for a bug.
+- Local cluster was verified, then `ts_tradespeople` truncated so the tree is empty.
+
+Result: sign-up and sign-in work end-to-end for real, and the auth schema is
+proven against an actual Postgres rather than only a mocked `pg`.
+Deferred: fixed/persisted JWT_SECRET, committed `.env.example`, CLAUDE.md is now
+badly stale ("no code exists yet"), reviewer/vision pass (fleet still down).

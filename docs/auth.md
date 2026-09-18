@@ -68,6 +68,11 @@ raised later without invalidating existing hashes).
 - The web stores the token in a **non-httpOnly** `ts_session` cookie
   (`lib/auth-client.ts`) — see Limitations.
 
+## Running it locally
+
+Auth needs Postgres. See `docs/local-dev.md` for the no-Docker database
+(`npm run db:local --workspace=apps/api`) and the two env vars the API reads.
+
 ## Build-time gotcha: `API_BASE_URL` is baked in
 
 Next.js compiles `rewrites()` into `.next/routes-manifest.json` during `next build`.
