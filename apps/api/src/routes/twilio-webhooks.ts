@@ -25,6 +25,13 @@ twilioWebhooksRouter.post('/inbound-sms', verifyTwilioSignature, async (req, res
     return;
   }
 
+  // CP03 spec C7: reject non-E.164 From BEFORE enqueueing — no customer row
+  // should ever be created for a malformed phone number.
+  if (!/^\+?[1-9][0-9]{1,14}$/.test(body.From as string)) {
+    res.status(400).json({ error: 'INVALID_PHONE' });
+    return;
+  }
+
   try {
     const job = await enqueue({
       type: 'inbound_sms',

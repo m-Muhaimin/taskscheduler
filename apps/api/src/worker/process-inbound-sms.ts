@@ -4,8 +4,16 @@ import { parseIntent } from '../services/intent-service.js';
 import { sendSms } from '../services/sms-service.js';
 import { createEscalation } from '../services/escalation-service.js';
 import { getConversationByPhone } from '../services/conversation-service.js';
+import {
+  findOrCreateCustomer,
+  findOrCreateConversation,
+  appendMessage,
+} from '../services/conversation-domain.js';
+import { resolveOrganizationIdByTwilioNumber } from '../services/organization-service.js';
 
 /** Handler for `type = 'inbound_sms'` (build-sequence.md Step 8). */
+
+const E164_RE = /^\+?[1-9][0-9]{1,14}$/;
 
 // ---------------------------------------------------------------------------
 // Dispatch
@@ -31,7 +39,58 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
   const customerPhone = raw.From;
   const body = raw.Body;
 
-  // Look up existing conversation for this phone (needed for slot-choice intent).
+  // CP03 spec C7: reject non-E.164 From BEFORE touching the customer table.
+  if (!E164_RE.test(customerPhone)) {
+    await createEscalation({
+      type: 'processing_error',
+      customerPhone,
+      content: `inbound SMS From is not valid E.164: ${JSON.stringify(customerPhone)}`,
+    });
+    return;
+  }
+
+  // CP03 spec H.2: resolve organization from the inbound Twilio number (To).
+  const toNumber = typeof raw.To === 'string' ? raw.To : null;
+  let organizationId: string | null = null;
+  if (toNumber) {
+    try {
+      organizationId = await resolveOrganizationIdByTwilioNumber(toNumber);
+    } catch (err) {
+      console.error('[worker] organization resolution failed:', err);
+    }
+  }
+  if (!organizationId) {
+    await createEscalation({
+      type: 'processing_error',
+      customerPhone,
+      content: `no organization registered for Twilio number: ${JSON.stringify(toNumber)}`,
+    });
+    return;
+  }
+
+  // CP03 spec H.3-H.5: customer + conversation + message layer in front of
+  // the existing dispatch. Failures here escalate but do not kill the job loop.
+  try {
+    const customer = await findOrCreateCustomer(organizationId, customerPhone);
+    const conversation = await findOrCreateConversation(customer.id, 'sms');
+    await appendMessage(
+      conversation.id,
+      'inbound',
+      body,
+      typeof raw.MessageSid === 'string' ? raw.MessageSid : null,
+      { From: customerPhone, To: toNumber },
+    );
+  } catch (err) {
+    console.error('[worker] conversation-domain write failed:', err);
+    await createEscalation({
+      type: 'processing_error',
+      customerPhone,
+      content: `conversation-domain write failed: ${String(err)}`,
+    });
+    return;
+  }
+
+  // Look up existing conversation state for this phone (needed for slot-choice intent).
   let conversationStateExists = false;
   try {
     const conv = await getConversationByPhone(customerPhone);
@@ -84,7 +143,7 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Intent handlers â€” delegate to reschedule-service
+// Intent handlers — delegate to reschedule-service
 // ---------------------------------------------------------------------------
 
 /**
@@ -170,7 +229,7 @@ export async function sendHelpSms(customerPhone: string): Promise<void> {
 
 /**
  * Real: send an SMS telling the customer we couldn't find a booking for
- * their number. No escalation â€” this is an informative dead-end, not an
+ * their number. No escalation — this is an informative dead-end, not an
  * operational incident.
  */
 export async function sendNoMatchingBookingSms(customerPhone: string): Promise<void> {

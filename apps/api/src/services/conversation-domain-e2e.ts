@@ -15,7 +15,9 @@
  * Usage: DATABASE_URL=<conn> npx tsx src/services/conversation-domain-e2e.ts
  */
 
+import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
+import type { QueryResultRow } from 'pg';
 import { findOrCreateCustomer, findOrCreateConversation, appendMessage } from './conversation-domain.js';
 
 const connectionString = process.env.DATABASE_URL;
@@ -27,26 +29,26 @@ if (!connectionString) {
 
 const pool = new Pool({ connectionString, max: 2, connectionTimeoutMillis: 5000 });
 
-async function queryOne<T>(sql: string, params: unknown[] = []): Promise<T | null> {
+async function queryOne<T extends QueryResultRow>(sql: string, params: unknown[] = []): Promise<T | null> {
   const { rows } = await pool.query<T>(sql, params);
   return rows[0] ?? null;
 }
 
-async function queryAll<T>(sql: string, params: unknown[] = []): Promise<T[]> {
+async function queryAll<T extends QueryResultRow>(sql: string, params: unknown[] = []): Promise<T[]> {
   const { rows } = await pool.query<T>(sql, params);
   return rows;
 }
 
 async function main() {
-  const orgId = 'e2e-test-org-' + Date.now();
-  const phone = '+155****9999';
+  const orgId = randomUUID();
+  const phone = '+15559999999';
   const twilioMessageSid = 'SM' + Date.now().toString(36).toUpperCase();
   const results: string[] = [];
 
   try {
     // --- Setup: ensure org exists ---
     await pool.query(
-      `insert into public.organizations (id, name, slug, timezone, status)
+      `insert into public.ts_organizations (id, name, slug, timezone, status)
        values ($1, $2, $3, 'America/New_York', 'active')
        on conflict (id) do nothing`,
       [orgId, 'E2E Test Org', 'e2e-test-org'],
@@ -62,7 +64,7 @@ async function main() {
 
     // Verify exactly one customer row.
     const { rows: [customerCount] } = await pool.query<{ count: string }>(
-      `select count(*)::text as count from public.customers where organization_id = $1 and phone = $2`,
+      `select count(*)::text as count from public.ts_customers where organization_id = $1 and phone = $2`,
       [orgId, phone],
     );
     const customerRowCount = parseInt(customerCount.count, 10);
@@ -111,7 +113,7 @@ async function main() {
 
     // Verify two messages in the same conversation.
     const messages = await queryAll<{ id: string }>(
-      `select id from public.messages where conversation_id = $1 order by created_at`,
+      `select id from public.ts_messages where conversation_id = $1 order by created_at`,
       [conversation.id],
     );
     results.push(
@@ -125,7 +127,7 @@ async function main() {
     console.log('[E2E closed→new] Close conversation, next message opens new one');
 
     await pool.query(
-      `update public.conversations set status = 'closed', closed_at = now() where id = $1`,
+      `update public.ts_conversations set status = 'closed', closed_at = now() where id = $1`,
       [conversation.id],
     );
 
@@ -142,7 +144,7 @@ async function main() {
     // --- C5: Concurrent race — two parallel findOrCreateCustomer calls ---
     console.log('[E2E C5] Concurrent race test');
 
-    const racePhone = '+155****7777';
+    const racePhone = '+15557777777';
     const [raceFirst, raceSecond] = await Promise.all([
       findOrCreateCustomer(orgId, racePhone),
       findOrCreateCustomer(orgId, racePhone),
@@ -158,7 +160,7 @@ async function main() {
     }
 
     const { rows: [raceCount] } = await pool.query<{ count: string }>(
-      `select count(*)::text as count from public.customers where organization_id = $1 and phone = $2`,
+      `select count(*)::text as count from public.ts_customers where organization_id = $1 and phone = $2`,
       [orgId, racePhone],
     );
     const raceRowCount = parseInt(raceCount.count, 10);

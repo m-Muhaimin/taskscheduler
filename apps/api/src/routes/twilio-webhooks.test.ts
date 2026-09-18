@@ -140,6 +140,29 @@ describe('POST /api/twilio/webhooks/inbound-sms', () => {
     expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
+  it('rejects a non-E.164 From with 400 INVALID_PHONE (before enqueue)', async () => {
+    const sent = { ...BASE_PARAMS, From: 'not-a-phone' };
+    const sig = computeSignature(webhookUrl(), sent);
+    const res = await post(sent, sig);
+
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toBe('INVALID_PHONE');
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('rejects an over-long From with 400 INVALID_PHONE', async () => {
+    // 16 digits exceeds the E.164 max of 15.
+    const sent = { ...BASE_PARAMS, From: '+1555123456789012' };
+    const sig = computeSignature(webhookUrl(), sent);
+    const res = await post(sent, sig);
+
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toBe('INVALID_PHONE');
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
   it('rejects with 401 when TWILIO_AUTH_TOKEN is not configured (fails closed)', async () => {
     delete process.env.TWILIO_AUTH_TOKEN;
     try {
