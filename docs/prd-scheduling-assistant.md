@@ -50,6 +50,31 @@ Solo and micro-crew tradespeople (plumbers, electricians, HVAC, handymen, locksm
 - JWT auth for tradesperson dashboard
 - Paddle integration for collecting deposits at booking time
 - Simple intent parsing (rule-based + LLM fallback for reschedule)
+
+### LLM Layer (Checkpoint 01 — implemented)
+
+The `@tradescheduler/ai` package provides a provider-agnostic LLM layer:
+
+- **Interface**: `AIProvider` with `generateStructured()`, `generateText()`, `getUsage()`.
+- **Structured schema**: 6 intents (`new_booking`, `reschedule`, `cancel`, `question`, `emergency`, `unknown`) + structured fields (service, customer_name, preferred_date, preferred_time_start, preferred_time_end, urgency, missing_information, confidence).
+- **OpenAI adapter**: first wired provider (gpt-4o-mini), structured output via `response_format: { type: "json_schema" }`, usage tracking, retry logic, error mapping.
+- **Rule-based fallback**: wraps existing `intent-service.ts` `parseIntent()` — explicit fallback, not deleted or replaced.
+- **Fallback policy**: LLM first → if fails/low confidence → rule-based parser → if both unknown → escalate, never guess. Superset guarantee: rule-based high-confidence intent (≥0.9) wins over LLM.
+- **Cost tracking**: `ai_usage` table records per-call token usage + estimated USD cost. Analytics dashboard (P0.9) reads from this table.
+
+New env vars: `AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`.
+
+### Planned work (not started)
+
+- **Checkpoint 02**: Tenant model — replace single-tradesperson identity with organizations + organization_members (OWNER/STAFF/TECHNICIAN), migration path from ts_tradespeople.
+- **Checkpoint 03**: Customer + Conversation domain — customers, customer_addresses, conversations, messages tables; findOrCreateCustomer/Conversation/Message services; process-inbound-sms.ts wiring.
+- **Checkpoint 04**: Booking / Appointment domain — appointments table, concrete BookingLookupFn, wire into process-inbound-sms.ts.
+- **Checkpoint 05**: Real Scheduling Engine — SchedulingEngine service on top of calendar-service.ts.
+- **Checkpoint 06**: AI Booking Agent — wire LLM + conversation domain + scheduling engine into conversational booking.
+- **Checkpoint 07**: Production communications hardening — idempotency, rate limiting, retry/dead-letter, delivery tracking, CVE audit.
+- **Checkpoint 08**: Replace dashboard fixtures with real API-backed data.
+- **Checkpoint 09**: Technicians + Dispatch + Job Lifecycle.
+- **Checkpoint 10**: Revenue Loop — missed-call recovery, follow-up automation, analytics.
 - Admin settings: SMS templates, business hours, trade type
 
 ### Not in v1 (v2+)
