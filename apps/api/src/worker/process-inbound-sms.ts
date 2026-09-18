@@ -1,17 +1,18 @@
 import { initiateRescheduleFlow, processSlotChoice, confirmReschedule } from '../services/reschedule-service.js';
 import { defaultAuth } from '../services/calendar-service.js';
 import type { QueueJob } from '../services/queue-service.js';
+import { schedulingEngine } from '../services/scheduling-engine.js';
 import { parseIntent } from '../services/intent-service.js';
 import { sendSms } from '../services/sms-service.js';
 import { createEscalation } from '../services/escalation-service.js';
-import { getConversationByPhone } from '../services/conversation-service.js';
+import { createConversation, getConversationByPhone } from '../services/conversation-service.js';
 import {
   findOrCreateCustomer,
   findOrCreateConversation,
   appendMessage,
 } from '../services/conversation-domain.js';
 import { resolveOrganizationIdByTwilioNumber } from '../services/organization-service.js';
-import { findBookingById, findBookingByPhone, findUserProfile, updateBookingTimes } from '../services/booking-service.js';
+import { findBookingById, findUserProfile, findBookingByPhone, updateBookingTimes, findUserBookingsInWindow } from '../services/booking-service.js';
 
 /** Handler for `type = 'inbound_sms'` (build-sequence.md Step 8). */
 
@@ -188,7 +189,13 @@ async function handleRescheduleIntent(
         cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true, orderBy: 'startTime' }),
       (id: string) => findBookingById(organizationId, id),
       findUserProfile,
-      sendSms as Parameters<typeof initiateRescheduleFlow>[7],
+      sendSms,
+      createConversation,
+      schedulingEngine.getAvailableSlots,
+      schedulingEngine.pickOfferedSlots,
+      createEscalation,
+      (userId: string, fromIso: string, toIso: string) =>
+        findUserBookingsInWindow(organizationId, userId, fromIso, toIso),
     );
   } catch (err) {
     console.error('[worker] initiateRescheduleFlow failed:', err);

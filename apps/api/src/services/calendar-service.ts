@@ -134,7 +134,7 @@ export function defaultAuth(userId: string, calendarId: string): Promise<Calenda
   });
 }
 
-function defaultFreeBusy(
+export function defaultFreeBusy(
   client: CalendarClient,
   calendarId: string,
   timeMin: string,
@@ -149,7 +149,7 @@ function defaultFreeBusy(
   });
 }
 
-function defaultListEvents(
+export function defaultListEvents(
   client: CalendarClient,
   calendarId: string,
   timeMin: string,

@@ -13,16 +13,12 @@
  */
 
 import { sendSms, type SendSmsInput } from './sms-service.js';
-import { createCalendarEvent, type AuthFn, type CreateEventFn } from './calendar-service.js';
+import { createCalendarEvent, type AuthFn, type CreateEventFn, type FreeBusyFn, type ListEventsFn } from './calendar-service.js';
 import { createEscalation, type CreateEscalationInput } from './escalation-service.js';
 import { createConversation, getConversation, updateConversation, type UpdateConversationInput } from './conversation-service.js';
-import {
-  getAvailableSlots,
-  pickOfferedSlots,
-  type FreeBusyFn,
-  type ListEventsFn,
-} from './calendar-service.js';
+import { schedulingEngine } from './scheduling-engine.js';
 import type {
+  AvailableSlot,
   Booking,
   BusinessHours,
   ConversationState,
@@ -60,8 +56,10 @@ export type GetAvailableSlotsFn = (
   freeBusyFn?: FreeBusyFn,
   listEventsFn?: ListEventsFn,
   maxSlots?: number,
+  opts?: { excludeBookingIds?: string[] },
 ) => Promise<GetAvailableSlotsResult>;
-export type PickOfferedSlotsFn = (available: import('@tradescheduler/shared').AvailableSlot[]) => OfferedSlot[];
+export type PickOfferedSlotsFn = (available: AvailableSlot[], timeZone?: string) => OfferedSlot[];
+export type SiblingBookingsFn = (userId: string, fromIso: IsoString, toIso: IsoString) => Promise<Booking[]>;
 
 // ---------------------------------------------------------------------------
 // Default SMS sender (real sendSms)
@@ -100,9 +98,10 @@ export async function initiateRescheduleFlow(
   userLookupFn: UserLookupFn,
   smsSendFn: SmsSendFn = defaultSendSms,
   conversationCreateFn: typeof createConversation = createConversation,
-  getAvailableSlotsFn: GetAvailableSlotsFn = getAvailableSlots,
-  pickOfferedSlotsFn: PickOfferedSlotsFn = pickOfferedSlots,
+  getAvailableSlotsFn: GetAvailableSlotsFn = schedulingEngine.getAvailableSlots,
+  pickOfferedSlotsFn: PickOfferedSlotsFn = schedulingEngine.pickOfferedSlots,
   createEscalationFn: CreateEscalationFn = createEscalation,
+  siblingBookingsFn?: SiblingBookingsFn,
 ): Promise<ConversationState | null> {
   // 1. Booking must exist.
   const booking = await bookingLookupFn(bookingId);
@@ -122,16 +121,25 @@ export async function initiateRescheduleFlow(
   const toDate = new Date(fromDate);
   toDate.setDate(toDate.getDate() + 7); // next 7 days
 
+  // Sibling bookings (other appointments) block the same windows the
+  // being-rescheduled booking occupies — but never itself.
+  const siblings = siblingBookingsFn
+    ? await siblingBookingsFn(booking.userId, fromDate.toISOString(), toDate.toISOString())
+    : [];
+  const existingBookings = siblings.filter((b) => b.id !== booking.id);
+
   const result = await getAvailableSlotsFn(
     booking.userId,
     user.googleCalendarId ?? '',
     user.businessHours,
-    [], // existing bookings — caller should pass real list; for now empty
+    existingBookings,
     fromDate,
     toDate,
     authFn,
     freeBusyFn,
     listEventsFn,
+    undefined,
+    { excludeBookingIds: [booking.id] },
   );
 
   if (result.errors.length > 0 && result.slots.length === 0) {
@@ -154,8 +162,8 @@ export async function initiateRescheduleFlow(
     return null;
   }
 
-  // 4. Pick 3 offered slots.
-  const offered = pickOfferedSlotsFn(result.slots);
+  // 4. Pick 3 offered slots (day-spread grouped in the user's timezone).
+  const offered = pickOfferedSlotsFn(result.slots, user.businessHours.timezone);
 
   // 5. Create conversation state.
   const conversation = await conversationCreateFn({

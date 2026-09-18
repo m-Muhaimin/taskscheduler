@@ -20,6 +20,8 @@ const m = vi.hoisted(() => ({
   findBookingByPhone: vi.fn(),
   findUserProfile: vi.fn(),
   updateBookingTimes: vi.fn(),
+  findUserBookingsInWindow: vi.fn(),
+  createConversation: vi.fn(),
 }));
 
 vi.mock('../services/conversation-domain.js', () => ({
@@ -37,6 +39,7 @@ vi.mock('../services/intent-service.js', () => ({
   parseIntent: m.parseIntent,
 }));
 vi.mock('../services/conversation-service.js', () => ({
+  createConversation: m.createConversation,
   getConversationByPhone: m.getConversationByPhone,
 }));
 vi.mock('../services/booking-service.js', () => ({
@@ -44,6 +47,7 @@ vi.mock('../services/booking-service.js', () => ({
   findBookingByPhone: m.findBookingByPhone,
   findUserProfile: m.findUserProfile,
   updateBookingTimes: m.updateBookingTimes,
+  findUserBookingsInWindow: m.findUserBookingsInWindow,
 }));
 vi.mock('../services/sms-service.js', () => ({
   sendSms: m.sendSms,
@@ -188,7 +192,12 @@ describe('processInboundSms — CP03 wiring', () => {
     expect(m.initiateRescheduleFlow).toHaveBeenCalledWith(
       'apt-byphone',
       '+15551234567',
-      expect.anything(),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
       expect.any(Function),
       expect.any(Function),
       expect.any(Function),
@@ -207,7 +216,12 @@ describe('processInboundSms — CP03 wiring', () => {
     expect(m.initiateRescheduleFlow).toHaveBeenCalledWith(
       'apt-fromstate',
       '+15551234567',
-      expect.anything(),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
       expect.any(Function),
       expect.any(Function),
       expect.any(Function),

@@ -109,6 +109,33 @@ export async function findBookingByPhone(
   return rows[0] ? rowToBooking(rows[0]) : null;
 }
 
+/**
+ * Bookings that overlap the [fromIso, toIso) window for a user
+ * (org-scoped). Only pending/confirmed appointments count as blockers.
+ * Ordered by start_time ascending. Uses strict-overlap semantics
+ * (start_time < windowEnd AND end_time > windowStart) so boundary-touching
+ * appointments are excluded.
+ */
+export async function findUserBookingsInWindow(
+  organizationId: string,
+  userId: string,
+  fromIso: string,
+  toIso: string,
+): Promise<Booking[]> {
+  const { rows } = await getPool().query<AppointmentRow>(
+    `select ${APPOINTMENT_COLUMNS}
+       from public.ts_appointments
+      where organization_id = $1
+        and user_id = $2
+        and status in ('pending', 'confirmed')
+        and start_time < $3
+        and end_time > $4
+      order by start_time asc`,
+    [organizationId, userId, toIso, fromIso],
+  );
+  return rows.map(rowToBooking);
+}
+
 // ---------------------------------------------------------------------------
 // Booking update (persist a confirmed reschedule)
 // ---------------------------------------------------------------------------

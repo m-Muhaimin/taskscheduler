@@ -84,6 +84,36 @@ describe('booking-service', () => {
     });
   });
 
+  describe('findUserBookingsInWindow', () => {
+    it('queries org-scoped overlap semantics with (toIso, fromIso) params and maps rows', async () => {
+      const svc = await loadService();
+      const aptB = { ...appointmentRow(), id: 'apt-b', start_time: new Date('2026-09-25T10:00:00.000Z'), end_time: new Date('2026-09-25T11:00:00.000Z') };
+      mocks.query.mockResolvedValue({ rows: [appointmentRow(), aptB] });
+
+      const bookings = await svc.findUserBookingsInWindow('org-1', 'user-1', '2026-09-24T00:00:00.000Z', '2026-09-26T00:00:00.000Z');
+
+      const sql = mocks.query.mock.calls[0][0] as string;
+      expect(sql).toContain('organization_id = $1');
+      expect(sql).toContain('user_id = $2');
+      expect(sql).toContain('start_time < $3');
+      expect(sql).toContain('end_time > $4');
+      expect(sql).toContain("status in ('pending', 'confirmed')");
+      expect(mocks.query.mock.calls[0][1]).toEqual(['org-1', 'user-1', '2026-09-26T00:00:00.000Z', '2026-09-24T00:00:00.000Z']);
+      expect(bookings).toHaveLength(2);
+      expect(bookings[0].id).toBe('apt-1');
+      expect(bookings[1].id).toBe('apt-b');
+    });
+
+    it('returns an empty array when no bookings overlap the window', async () => {
+      const svc = await loadService();
+      mocks.query.mockResolvedValue({ rows: [] });
+
+      const bookings = await svc.findUserBookingsInWindow('org-1', 'user-1', '2026-09-24T00:00:00.000Z', '2026-09-26T00:00:00.000Z');
+
+      expect(bookings).toEqual([]);
+    });
+  });
+
   describe('findBookingById', () => {
     it('returns the mapped Booking when found (org-scoped)', async () => {
       const svc = await loadService();
