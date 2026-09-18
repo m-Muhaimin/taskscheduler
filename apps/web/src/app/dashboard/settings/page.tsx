@@ -12,7 +12,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <Card className="border border-border shadow-none ring-0">
+      <Card>
         <CardContent>
           <CardTitle className="font-semibold">Business hours</CardTitle>
           <CardDescription className="mt-1">When you take jobs.</CardDescription>
@@ -38,7 +38,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="border border-border shadow-none ring-0">
+      <Card>
         <CardContent>
           <CardTitle className="font-semibold">SMS template</CardTitle>
           <CardDescription className="mt-1">Used for reschedule offers.</CardDescription>

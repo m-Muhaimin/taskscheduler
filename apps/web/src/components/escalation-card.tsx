@@ -26,7 +26,7 @@ export function EscalationCard({ escalation, onResolve }: { escalation: Escalati
   const isPending = escalation.status === "pending";
 
   return (
-    <Card className="border border-border p-0 shadow-none ring-0">
+    <Card className="p-0">
       <CardContent className="px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1 space-y-2">
@@ -35,7 +35,7 @@ export function EscalationCard({ escalation, onResolve }: { escalation: Escalati
                 {TYPE_LABEL[escalation.type]}
               </Badge>
               {isPending ? (
-                <Badge variant="outline" className="text-xs border-urgent/30 bg-urgent-soft text-urgent-soft-foreground">
+                <Badge variant="urgent" className="text-xs">
                   Pending
                 </Badge>
               ) : (

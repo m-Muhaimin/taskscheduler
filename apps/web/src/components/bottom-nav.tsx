@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation"
 import { CalendarDaysIcon, HomeIcon, SettingsIcon } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { dayKey } from "@/lib/format"
 import { useDashboardData } from "@/lib/use-dashboard-data"
@@ -61,12 +62,13 @@ export function BottomNav() {
               <span className="flex items-center gap-1">
                 {item.label}
                 {item.value === "today" && unconfirmed > 0 && (
-                  <span
+                  <Badge
+                    variant="urgent-solid"
                     aria-label={`${unconfirmed} unconfirmed`}
-                    className="hidden min-w-4 items-center justify-center rounded-full bg-urgent px-1 py-0.5 text-[10px] font-semibold leading-none text-urgent-foreground sm:inline-flex"
+                    className="hidden min-w-4 px-1.5 text-[10px] font-semibold leading-none sm:inline-flex"
                   >
                     {unconfirmed}
-                  </span>
+                  </Badge>
                 )}
               </span>
             </TabsTrigger>

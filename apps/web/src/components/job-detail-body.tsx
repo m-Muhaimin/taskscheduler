@@ -18,15 +18,9 @@ import { Separator } from "@/components/ui/separator"
 import { buildSmsBody, formatDateLabel, formatTimeRange, maskPhone, smsHref } from "@/lib/format"
 import { RescheduleHistory } from "@/components/reschedule-history"
 import { type DashboardBooking } from "@/lib/fixtures"
+import { STATUS_LABEL, statusBadgeVariant } from "@/lib/status"
 import { useDashboardData } from "@/lib/use-dashboard-data"
 import { cn } from "@/lib/utils"
-
-const STATUS_LABEL: Record<DashboardBooking["status"], string> = {
-  pending: "Unconfirmed",
-  confirmed: "Confirmed",
-  rescheduled: "Rescheduled",
-  completed: "Completed",
-}
 
 function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -54,25 +48,15 @@ export function JobDetailBody({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge
-          variant={
-            booking.status === "confirmed"
-              ? "default"
-              : booking.status === "rescheduled"
-                ? "secondary"
-                : "outline"
-          }
+          variant={statusBadgeVariant(booking.status)}
           className={cn(
-            booking.status === "pending" && "border-urgent/30 bg-urgent-soft text-urgent-soft-foreground",
             booking.status === "completed" && "border-border text-muted-foreground"
           )}
         >
           {STATUS_LABEL[booking.status]}
         </Badge>
         {needsAttention && (
-          <Badge
-            aria-label="Needs attention"
-            className="border-urgent/30 bg-urgent-soft text-urgent-soft-foreground"
-          >
+          <Badge variant="urgent" aria-label="Needs attention">
             <span className="size-1.5 rounded-full bg-urgent" aria-hidden="true" />
             Needs attention
           </Badge>

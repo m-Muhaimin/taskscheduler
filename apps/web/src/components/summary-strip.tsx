@@ -46,7 +46,7 @@ export function SummaryStrip({
         <Card
           key={c.label}
           size="sm"
-          className={cn("border border-border shadow-none ring-0", c.urgent && "border-urgent/30 bg-urgent-soft")}
+          className={cn(c.urgent && "border-urgent/30 bg-urgent-soft")}
         >
           <CardContent className="px-3">
             <p

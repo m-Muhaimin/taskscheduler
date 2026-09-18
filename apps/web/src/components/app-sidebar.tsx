@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { CalendarDaysIcon, HomeIcon, SettingsIcon, TriangleAlertIcon, WrenchIcon } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import {
   Sidebar,
   SidebarContent,
@@ -62,9 +63,12 @@ export function AppSidebar() {
                     <item.icon />
                     <span>{item.title}</span>
                     {item.title === "Escalations" && pendingEscalations > 0 && (
-                      <span className="ml-auto min-w-4 rounded-full bg-urgent px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-urgent-foreground group-data-[collapsible=icon]:hidden">
+                      <Badge
+                        variant="urgent-solid"
+                        className="ml-auto min-w-4 px-1.5 text-[10px] font-semibold leading-none text-center group-data-[collapsible=icon]:hidden"
+                      >
                         {pendingEscalations}
-                      </span>
+                      </Badge>
                     )}
                   </Link>
                 </SidebarMenuButton>

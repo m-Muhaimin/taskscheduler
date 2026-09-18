@@ -17,7 +17,7 @@ export default function JobDetailPage() {
 
   if (!booking) {
     return (
-      <Card className="border border-border py-12 text-center shadow-none ring-0">
+      <Card className="py-12 text-center">
         <p className="text-base font-medium">Job not found.</p>
         <p className="mt-1 text-sm text-muted-foreground">It may have been removed.</p>
         <Button asChild variant="secondary" className="mt-4 h-11">
@@ -36,7 +36,7 @@ export default function JobDetailPage() {
         <ArrowLeftIcon className="size-4" />
         Back to today
       </Link>
-      <Card className="border border-border p-0 shadow-none ring-0">
+      <Card className="p-0">
         <div className="p-6 pb-2">
           <JobDetailBody booking={booking} tz={businessTz} tradeLabel={tradeLabel} />
         </div>

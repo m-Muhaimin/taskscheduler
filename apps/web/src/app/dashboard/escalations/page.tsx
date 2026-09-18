@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -56,9 +57,9 @@ export default function EscalationsPage() {
       )}
 
       {showEmpty && (
-        <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-none ring-0">
+        <Card className="p-8 text-center text-sm text-muted-foreground">
           No pending escalations — everything&apos;s under control.
-        </div>
+        </Card>
       )}
 
       {loadState === "ready" && escalations.length > 0 && (

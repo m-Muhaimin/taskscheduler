@@ -10,13 +10,7 @@ import { useIsDesktop } from "@/hooks/use-media-query"
 import { buildSmsBody, formatDateLabel, formatTime, maskPhone, smsHref } from "@/lib/format"
 import { type DashboardBooking } from "@/lib/fixtures"
 import { cn } from "@/lib/utils"
-
-const STATUS_LABEL: Record<DashboardBooking["status"], string> = {
-  pending: "Unconfirmed",
-  confirmed: "Confirmed",
-  rescheduled: "Rescheduled",
-  completed: "Completed",
-}
+import { STATUS_LABEL, statusBadgeVariant } from "@/lib/status"
 
 /**
  * Job list card (brief §5.3). Flat card (nova base overridden: border, no ring)
@@ -74,10 +68,7 @@ export function JobCard({
           {formatTime(booking.startTime, tz)}
         </Badge>
         {needsAttention && (
-          <Badge
-            aria-label="Needs attention"
-            className="border-urgent/30 bg-urgent-soft text-urgent-soft-foreground"
-          >
+          <Badge variant="urgent" aria-label="Needs attention">
             <span className="size-1.5 rounded-full bg-urgent" aria-hidden="true" />
             Needs attention
           </Badge>
@@ -91,7 +82,7 @@ export function JobCard({
   )
 
   return (
-    <Card className={cn("gap-0 border border-border p-0 shadow-none ring-0", accent)}>
+    <Card className={cn("gap-0 p-0", accent)}>
       <CardContent className={cn("px-4 py-3", hoverAffordance)}>
         {isDesktop ? (
           <Link href={`/dashboard/jobs/${booking.id}`} className="block" aria-label={`Open ${booking.customerName} job details`}>
@@ -111,16 +102,9 @@ export function JobCard({
       <div className="flex items-center justify-between border-t px-4 py-2">
         <div className="flex items-center gap-1.5">
           <Badge
-            variant={
-              booking.status === "confirmed"
-                ? "default"
-                : booking.status === "rescheduled"
-                  ? "secondary"
-                  : "outline"
-            }
+            variant={statusBadgeVariant(booking.status)}
             className={cn(
               "h-5 px-2 text-[11px]",
-              booking.status === "pending" && "border-urgent/30 bg-urgent-soft text-urgent-soft-foreground",
               booking.status === "completed" && "border-border text-muted-foreground"
             )}
           >

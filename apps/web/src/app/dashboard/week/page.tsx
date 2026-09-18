@@ -103,7 +103,7 @@ export default function WeekPage() {
             </div>
 
             {!hasAny && (
-              <Card className="border border-border py-12 text-center shadow-none ring-0">
+              <Card className="py-12 text-center">
                 <p className="text-base font-medium">Nothing booked this week.</p>
                 <p className="mt-1 text-sm text-muted-foreground">Plenty of time to chase new leads.</p>
                 <Button asChild variant="secondary" className="mt-4 h-11">

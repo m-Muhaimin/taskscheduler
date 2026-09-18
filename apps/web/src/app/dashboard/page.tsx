@@ -75,7 +75,7 @@ export default function TodayPage() {
       )}
 
       {showEmpty && (
-        <Card className="border border-border py-12 text-center shadow-none ring-0">
+        <Card className="py-12 text-center">
           <p className="text-base font-medium">No jobs today — enjoy the day off.</p>
           <Button asChild variant="secondary" className="mt-4 h-11">
             <Link href="/dashboard/week">See the week</Link>
