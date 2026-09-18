@@ -48,6 +48,42 @@ function appointmentRow(overrides: Record<string, unknown> = {}) {
 }
 
 describe('booking-service', () => {
+  describe('updateBookingTimes', () => {
+    it('persists the confirmed reschedule and returns the updated Booking', async () => {
+      mocks.query.mockResolvedValue({ rows: [appointmentRow({ status: 'confirmed', start_time: new Date('2026-09-25T14:00:00.000Z'), end_time: new Date('2026-09-25T15:00:00.000Z'), google_calendar_event_id: 'cal-evt-1' })] });
+
+      const svc = await loadService();
+      const updated = await svc.updateBookingTimes('org-1', 'apt-1', {
+        startTime: '2026-09-25T14:00:00.000Z',
+        endTime: '2026-09-25T15:00:00.000Z',
+        status: 'confirmed',
+        googleCalendarEventId: 'cal-evt-1',
+      });
+
+      expect(updated?.id).toBe('apt-1');
+      expect(updated?.status).toBe('confirmed');
+      expect(updated?.googleCalendarEventId).toBe('cal-evt-1');
+      // Org-scoped WHERE: update must not leak across tenants.
+      const params = mocks.query.mock.calls[0][1] as unknown[];
+      expect(params[4]).toBe('apt-1');
+      expect(params[5]).toBe('org-1');
+    });
+
+    it('returns null when no row matches (org-scoped miss)', async () => {
+      mocks.query.mockResolvedValue({ rows: [] });
+
+      const svc = await loadService();
+      const updated = await svc.updateBookingTimes('other-org', 'apt-1', {
+        startTime: '2026-09-25T14:00:00.000Z',
+        endTime: '2026-09-25T15:00:00.000Z',
+        status: 'confirmed',
+        googleCalendarEventId: null,
+      });
+
+      expect(updated).toBeNull();
+    });
+  });
+
   describe('findBookingById', () => {
     it('returns the mapped Booking when found (org-scoped)', async () => {
       const svc = await loadService();

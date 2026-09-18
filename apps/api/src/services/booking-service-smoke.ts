@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
-import { findBookingById, findBookingByPhone, findUserProfile } from './booking-service.js';
+import { findBookingById, findBookingByPhone, findUserProfile, updateBookingTimes } from './booking-service.js';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const orgId = randomUUID();
@@ -36,6 +36,21 @@ try {
 
   const byId = await findBookingById(orgId, aptId);
   const byPhone = await findBookingByPhone(orgId, '+15551234567');
+
+  // CP04 confirm leg: persist status='confirmed' + new times + event id.
+  const confirmed = await updateBookingTimes(orgId, aptId, {
+    startTime: '2026-09-26T09:30:00Z',
+    endTime: '2026-09-26T10:30:00Z',
+    status: 'confirmed',
+    googleCalendarEventId: 'cal-evt-e2e-1',
+  });
+  const reread = await findBookingById(orgId, aptId);
+  const wrongOrgPersist = await updateBookingTimes('00000000-0000-0000-0000-000000000000', aptId, {
+    startTime: '2026-09-26T09:30:00Z',
+    endTime: '2026-09-26T10:30:00Z',
+    status: 'confirmed',
+    googleCalendarEventId: 'cal-evt-e2e-1',
+  });
   const byPhoneWrongOrg = await findBookingByPhone('00000000-0000-0000-0000-000000000000', '+15551234567');
   const user = await findUserProfile(userId);
 
@@ -45,9 +60,14 @@ try {
     byPhone?.id === aptId &&
     byPhoneWrongOrg === null &&
     user?.googleCalendarId === 'primary' &&
-    user?.businessHours.start === '08:00';
+    user?.businessHours.start === '08:00' &&
+    confirmed?.status === 'confirmed' &&
+    confirmed?.googleCalendarEventId === 'cal-evt-e2e-1' &&
+    confirmed?.startTime === '2026-09-26T09:30:00.000Z' &&
+    reread?.status === 'confirmed' &&
+    wrongOrgPersist === null;
 
-  console.log('byId:', byId?.id, '| byPhone:', byPhone?.id, '| wrongOrg:', byPhoneWrongOrg, '| user:', user?.googleCalendarId, user?.businessHours.start);
+  console.log('byId:', byId?.id, '| byPhone:', byPhone?.id, '| wrongOrg:', byPhoneWrongOrg, '| user:', user?.googleCalendarId, user?.businessHours.start, '| confirmed:', confirmed?.status, confirmed?.googleCalendarEventId, '| reread:', reread?.status, '| wrongOrgPersist:', wrongOrgPersist);
   console.log(ok ? '[SMOKE] ALL BOOKING LOOKUPS PASSED' : '[SMOKE] FAILED');
 } finally {
   await pool.query('delete from public.ts_appointments where id = $1', [aptId]);

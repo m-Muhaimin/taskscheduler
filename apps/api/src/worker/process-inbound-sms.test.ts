@@ -19,6 +19,7 @@ const m = vi.hoisted(() => ({
   findBookingById: vi.fn(),
   findBookingByPhone: vi.fn(),
   findUserProfile: vi.fn(),
+  updateBookingTimes: vi.fn(),
 }));
 
 vi.mock('../services/conversation-domain.js', () => ({
@@ -42,6 +43,7 @@ vi.mock('../services/booking-service.js', () => ({
   findBookingById: m.findBookingById,
   findBookingByPhone: m.findBookingByPhone,
   findUserProfile: m.findUserProfile,
+  updateBookingTimes: m.updateBookingTimes,
 }));
 vi.mock('../services/sms-service.js', () => ({
   sendSms: m.sendSms,
@@ -231,10 +233,14 @@ describe('processInboundSms — CP03 wiring', () => {
     expect(m.createEscalation).not.toHaveBeenCalled(); // informative dead-end, not an incident
   });
 
-  it('confirm intent passes a real booking lookup into confirmReschedule', async () => {
+  it('confirm success persists the reschedule and sends a confirmation SMS', async () => {
     const worker = await loadWorker();
     m.parseIntent.mockReturnValue({ intent: 'confirm', confidence: 0.99 });
-    m.confirmReschedule.mockResolvedValue({ success: true });
+    m.confirmReschedule.mockResolvedValue({
+      success: true,
+      booking: BOOKING,
+      conversation: { id: 'conv-1', state: 'completed' },
+    });
 
     await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
 
@@ -245,5 +251,80 @@ describe('processInboundSms — CP03 wiring', () => {
       expect.any(Function),
       expect.any(Function),
     );
+    // Persist: org-scoped update with the confirmed slot + event id.
+    expect(m.updateBookingTimes).toHaveBeenCalledWith('org-1', 'apt-1', {
+      startTime: BOOKING.startTime,
+      endTime: BOOKING.endTime,
+      status: 'confirmed',
+      googleCalendarEventId: null,
+    });
+    // Customer gets the confirmation SMS (with the new time).
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: '+15551234567',
+        body: expect.stringContaining('confirmed'),
+      }),
+    );
+    expect(m.createEscalation).not.toHaveBeenCalled();
+  });
+
+  it('confirm dead-end (no conversation) gets no-matching-booking SMS', async () => {
+    const worker = await loadWorker();
+    m.parseIntent.mockReturnValue({ intent: 'confirm', confidence: 0.99 });
+    m.confirmReschedule.mockResolvedValue({ success: false, error: 'No conversation found' });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
+
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.stringContaining("wasn't able to find a booking") }),
+    );
+    expect(m.updateBookingTimes).not.toHaveBeenCalled();
+    expect(m.createEscalation).not.toHaveBeenCalled();
+  });
+
+  it('confirm failure (calendar error) sends a courtesy SMS, no booking update', async () => {
+    const worker = await loadWorker();
+    m.parseIntent.mockReturnValue({ intent: 'confirm', confidence: 0.99 });
+    m.confirmReschedule.mockResolvedValue({ success: false, error: 'Calendar event creation failed: boom' });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
+
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.stringContaining('Our team will contact you') }),
+    );
+    expect(m.updateBookingTimes).not.toHaveBeenCalled();
+    // Escalation for calendar failures is created inside reschedule-service.
+    expect(m.createEscalation).not.toHaveBeenCalled();
+  });
+
+  it('slot-choice with no offering conversation sends an invalid-choice SMS (no escalation)', async () => {
+    const worker = await loadWorker();
+    m.parseIntent.mockReturnValue({ intent: 'slot-choice', confidence: 0.9 });
+    m.processSlotChoice.mockResolvedValue(null);
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: '2', To: '+15559876543' }));
+
+    expect(m.processSlotChoice).toHaveBeenCalledWith('+15551234567', 2);
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.stringContaining('Reply with 1, 2, or 3') }),
+    );
+    expect(m.createEscalation).not.toHaveBeenCalled();
+  });
+
+  it('slot-choice failure escalates as processing_error', async () => {
+    const worker = await loadWorker();
+    m.parseIntent.mockReturnValue({ intent: 'slot-choice', confidence: 0.9 });
+    m.processSlotChoice.mockRejectedValue(new Error('state write failed'));
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: '1', To: '+15559876543' }));
+
+    expect(m.createEscalation).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'processing_error', customerPhone: '+15551234567' }),
+    );
+    expect(m.sendSms).not.toHaveBeenCalled();
   });
 });

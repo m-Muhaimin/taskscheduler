@@ -11,7 +11,7 @@ import {
   appendMessage,
 } from '../services/conversation-domain.js';
 import { resolveOrganizationIdByTwilioNumber } from '../services/organization-service.js';
-import { findBookingById, findBookingByPhone, findUserProfile } from '../services/booking-service.js';
+import { findBookingById, findBookingByPhone, findUserProfile, updateBookingTimes } from '../services/booking-service.js';
 
 /** Handler for `type = 'inbound_sms'` (build-sequence.md Step 8). */
 
@@ -205,9 +205,18 @@ async function handleRescheduleIntent(
  */
 async function handleSlotChoiceIntent(customerPhone: string, choice: number): Promise<void> {
   try {
-    await processSlotChoice(customerPhone, choice);
+    const conversation = await processSlotChoice(customerPhone, choice);
+    if (!conversation) {
+      // No conversation in 'offering_slots' state, or choice out of range.
+      await sendInvalidChoiceSms(customerPhone);
+    }
   } catch (err) {
     console.error('[worker] processSlotChoice failed:', err);
+    await createEscalation({
+      type: 'processing_error',
+      customerPhone,
+      content: `processSlotChoice failed: ${String(err)}`,
+    });
   }
 }
 
@@ -230,8 +239,32 @@ async function handleConfirmIntent(
       if (result.error?.includes('No conversation found') ||
           result.error?.includes('not in awaiting_slot_choice')) {
         await sendNoMatchingBookingSms(customerPhone);
+      } else {
+        // Calendar failure or booking missing: escalation is handled inside
+        // reschedule-service; give the customer a courteous heads-up.
+        await sendConfirmFailedSms(customerPhone);
       }
+      return;
     }
+
+    // Success: persist the confirmed reschedule, then tell the customer.
+    const booking = result.booking;
+    if (!booking) {
+      // Defensive: success result should always carry the booking. Escalate.
+      await createEscalation({
+        type: 'processing_error',
+        customerPhone,
+        content: `confirmReschedule succeeded without a booking`,
+      });
+      return;
+    }
+    await updateBookingTimes(organizationId, booking.id, {
+      startTime: booking.startTime,
+      endTime: booking.endTime,
+      status: 'confirmed',
+      googleCalendarEventId: booking.googleCalendarEventId,
+    });
+    await sendConfirmationSms(customerPhone, booking);
   } catch (err) {
     console.error('[worker] confirmReschedule threw:', err);
     await createEscalation({
@@ -247,6 +280,38 @@ async function handleConfirmIntent(
 // ---------------------------------------------------------------------------
 
 /** Real: send a help SMS to the customer explaining what they can do. */
+/** Real: tell the customer their numeric choice didn't match an offer. */
+export async function sendInvalidChoiceSms(customerPhone: string): Promise<void> {
+  await sendSms({
+    to: customerPhone,
+    body: `Sorry, I didn't catch that. Reply with 1, 2, or 3 to pick a time, or HELP for your options.`,
+  });
+}
+
+/** Real: courteous heads-up when the confirmation step fails (calendar etc.). */
+export async function sendConfirmFailedSms(customerPhone: string): Promise<void> {
+  await sendSms({
+    to: customerPhone,
+    body: `Sorry, something went wrong confirming your appointment. Our team will contact you shortly to sort it out.`,
+  });
+}
+
+/** Real: confirm the appointment to the customer with the new time. */
+export async function sendConfirmationSms(customerPhone: string, booking: import('@tradescheduler/shared').Booking): Promise<void> {
+  const when = new Date(booking.startTime).toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  await sendSms({
+    to: customerPhone,
+    body: `Your appointment is confirmed for ${when}. Reply RESCHEDULE if you need to move it.`,
+  });
+}
+
 export async function sendHelpSms(customerPhone: string): Promise<void> {
   await sendSms({
     to: customerPhone,

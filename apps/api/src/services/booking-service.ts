@@ -110,6 +110,40 @@ export async function findBookingByPhone(
 }
 
 // ---------------------------------------------------------------------------
+// Booking update (persist a confirmed reschedule)
+// ---------------------------------------------------------------------------
+
+export interface BookingStatusPatch {
+  startTime: string;
+  endTime: string;
+  status: Booking['status'];
+  googleCalendarEventId: string | null;
+}
+
+/**
+ * Persist the confirmed reschedule on ts_appointments (org-scoped).
+ * Returns the updated Booking, or null when the row does not exist.
+ */
+export async function updateBookingTimes(
+  organizationId: string,
+  bookingId: string,
+  patch: BookingStatusPatch,
+): Promise<Booking | null> {
+  const { rows } = await getPool().query<AppointmentRow>(
+    `update public.ts_appointments
+        set start_time = $1,
+            end_time = $2,
+            status = $3,
+            google_calendar_event_id = $4,
+            updated_at = now()
+      where id = $5 and organization_id = $6
+      returning ${APPOINTMENT_COLUMNS}`,
+    [patch.startTime, patch.endTime, patch.status, patch.googleCalendarEventId, bookingId, organizationId],
+  );
+  return rows[0] ? rowToBooking(rows[0]) : null;
+}
+
+// ---------------------------------------------------------------------------
 // Tradesperson profile lookup
 // ---------------------------------------------------------------------------
 
