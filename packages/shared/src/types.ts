@@ -225,3 +225,46 @@ export type RescheduleHistoryResponse = {
   bookingId: string;
   rescheduleLog: RescheduleLogEntry[];
 };
+
+// ── Auth (dashboard JWT) ───────────────────────────────────────────────────
+// §PRD "JWT auth for tradesperson dashboard". Credentials are email + password;
+// the API issues a signed JWT (sub = tradesperson id), the web app stores it in
+// the `ts_session` cookie. Auth endpoints live under /api/auth.
+
+/** Tradesperson identity returned after login/register; lean vs the full
+ *  `User` profile (phone, calendar, hours, sms settings) from fixtures. */
+export type AuthUser = {
+  id: string; // UUID of the tradesperson row
+  email: string;
+  displayName: string;
+};
+
+export type LoginRequest = {
+  email: string;
+  password: string;
+};
+
+export type RegisterRequest = {
+  displayName: string;
+  email: string;
+  password: string;
+};
+
+/** Success body for POST /api/auth/login and POST /api/auth/register. */
+export type AuthResponse = {
+  token: string; // signed JWT; web stores it in ts_session cookie
+  user: AuthUser;
+};
+
+/** Error bodies returned by the auth routes. */
+export type AuthError =
+  | 'invalid_body'
+  | 'invalid_credentials'
+  | 'email_taken'
+  | 'missing_token'
+  | 'invalid_token'
+  | 'server_not_configured';
+
+export type AuthErrorResponse = {
+  error: AuthError;
+};
