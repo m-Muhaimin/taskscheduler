@@ -73,3 +73,27 @@ removed once a user has re-connected through Settings.
   surface “reconnect in Settings” in the worker escalation content).
 - Sweep the `ts_oauth_states` table (a `pg_cron` purge or enforce the TTL in
   a unique partial index — rows are already filtered at consume time).
+
+## Addendum — local env loading (fixed so this actually runs)
+
+The API previously had **no `.env` loader at all** (no dotenv, no
+`--env-file`), so the root `.env` with `TWILIO_*`/`SUPABASE_*/DATABASE_URL`
+was never read by `npm run dev`/`worker`. Fixed with a zero-dependency
+bootstrap, `apps/api/src/env.ts`:
+
+- `process.loadEnvFile()` (Node 22+, we run 24) reads the **repo-root**
+  `.env` via `new URL('../../../.env', import.meta.url)` (path is
+  CWD-independent; note it's *three* levels up from `src/`).
+- Imported first in `src/index.ts` and `src/worker/index.ts`; other modules
+  keep the env-free boot rule.
+- Missing/unreadable `.env` is swallowed — CI/prod inject their own env.
+- Existing `process.env` values win (never overridden).
+
+`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` /
+`WEB_BASE_URL` were added to the local root `.env` (gitignored, uncommitted).
+Verified live: API boots, `/api/health` ok, `/api/auth/google/start` → 401
+`missing_token` without a JWT (route mounted, gate working).
+
+Notable local-dev gap: `.env` has **no `JWT_SECRET`**, so JWT-issuing routes
+(login/register) and JWT-gated calls (start/status/delete, web) can't fully
+run locally until one is added — pre-existing, out of scope here.
