@@ -36,7 +36,10 @@ if (!connectionString) {
   process.exit(0);
 }
 
-const client = new pg.Client({ connectionString });
+// ssl is set unconditionally (accepting self-signed/verifying off) because this
+// script only runs in deploys/local against Supabase pooler (SSL-required) or
+// Render internal Postgres; both are fine with rejectUnauthorized: false.
+const client = new pg.Client({ connectionString, ssl: { rejectUnauthorized: false } });
 await client.connect();
 try {
   for (const file of MIGRATIONS) {

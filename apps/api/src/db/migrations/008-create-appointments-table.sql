@@ -2,17 +2,17 @@
  * Migration 008: appointments table (CP04 booking domain) +
  * tradesperson profile columns for the real user lookup.
  *
- * Convention: public.<PREFIX>_<name> (ts_ prefix), RLS deny-by-default,
+ * Convention: public.<PREFIX>_<name> (rl_ prefix), RLS deny-by-default,
  * server-only access. Follows 001-007 style.
  */
 
 -- ============================================================================
--- ts_appointments — the Booking entity (PRD §Data Model Changes, spec §3)
+-- rl_appointments — the Booking entity (PRD §Data Model Changes, spec §3)
 -- ============================================================================
-create table if not exists public.ts_appointments (
+create table if not exists public.rl_appointments (
   id                      uuid primary key default gen_random_uuid(),
-  organization_id         uuid not null references public.ts_organizations (id) on delete cascade,
-  user_id                 uuid not null references public.ts_tradespeople (id) on delete cascade,
+  organization_id         uuid not null references public.rl_organizations (id) on delete cascade,
+  user_id                 uuid not null references public.rl_tradespeople (id) on delete cascade,
   customer_phone          text not null check (customer_phone ~ '^\+?[1-9][0-9]{1,14}$'),
   customer_name           text,
   service_description     text,
@@ -24,31 +24,31 @@ create table if not exists public.ts_appointments (
   deposit_status          text not null default 'pending'
                           check (deposit_status in ('pending', 'paid', 'failed')),
   google_calendar_event_id text,
-  rescheduled_from_id     uuid references public.ts_appointments (id) on delete set null,
+  rescheduled_from_id     uuid references public.rl_appointments (id) on delete set null,
   created_at              timestamptz not null default now(),
   updated_at              timestamptz not null default now()
 );
 
-comment on table public.ts_appointments is
+comment on table public.rl_appointments is
   'Booking/appointment domain for the reschedule flow (RLS deny-by-default)';
 
 -- findBookingByPhone: most recent appointment for a customer.
-create index if not exists ts_appointments_org_phone_start_idx
-  on public.ts_appointments (organization_id, customer_phone, start_time desc);
+create index if not exists rl_appointments_org_phone_start_idx
+  on public.rl_appointments (organization_id, customer_phone, start_time desc);
 
 -- join on user profile lookups.
-create index if not exists ts_appointments_org_user_idx
-  on public.ts_appointments (organization_id, user_id);
+create index if not exists rl_appointments_org_user_idx
+  on public.rl_appointments (organization_id, user_id);
 
-alter table public.ts_appointments enable row level security;
-revoke all on public.ts_appointments from anon, authenticated;
+alter table public.rl_appointments enable row level security;
+revoke all on public.rl_appointments from anon, authenticated;
 
 -- ============================================================================
--- ts_tradespeople: add nullable profile columns so userLookupFn can read real
+-- rl_tradespeople: add nullable profile columns so userLookupFn can read real
 -- identity data (CP04 spec: "Get user (tradesperson)" - calendar, hours, SMS).
 -- All nullable - old rows keep working; no backfill.
 -- ============================================================================
-alter table public.ts_tradespeople
+alter table public.rl_tradespeople
   add column if not exists phone_number            text
         check (phone_number ~ '^\+?[1-9][0-9]{1,14}$'),
   add column if not exists google_calendar_id      text,
