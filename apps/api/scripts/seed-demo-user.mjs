@@ -15,7 +15,7 @@ async function seed() {
 
   try {
     const passwordHash = await hashPassword(password);
-    const tableName = process.env.TRADESPEOPLE_TABLE ?? 'ts_tradespeople';
+    const tableName = process.env.TRADESPEOPLE_TABLE ?? 'rl_tradespeople';
     
     const result = await pool.query(
       `insert into ${tableName} (email, password_hash, display_name)

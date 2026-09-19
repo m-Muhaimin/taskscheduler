@@ -3,11 +3,11 @@
  *
  * Replaces the interim per-user env-var refresh token (GOOGLE_REFRESH_TOKEN_<userId>)
  * with the standard auth-code flow + a per-tradesperson credential store
- * (ts_google_credentials, migration 009):
+ * (rl_google_credentials, migration 009):
  *
  *   generateAuthUrl       — consent URL for the Settings "Connect" button
  *   exchangeCodeForTokens — POST to Google with the auth code (offline+consent)
- *   save/load/deleteCredentials — ts_google_credentials CRUD
+ *   save/load/deleteCredentials — rl_google_credentials CRUD
  *   create/consumeOauthState   — one-time state for the callback
  *
  * Env-free boot: Google credentials + DATABASE_URL read on first use, never at
@@ -42,11 +42,11 @@ function getPool(): Pool {
 }
 
 function credentialsTable(): string {
-  return process.env.GOOGLE_CREDENTIALS_TABLE ?? 'ts_google_credentials';
+  return process.env.GOOGLE_CREDENTIALS_TABLE ?? 'rl_google_credentials';
 }
 
 function oauthStatesTable(): string {
-  return process.env.GOOGLE_OAUTH_STATES_TABLE ?? 'ts_oauth_states';
+  return process.env.GOOGLE_OAUTH_STATES_TABLE ?? 'rl_oauth_states';
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ export async function exchangeCodeForTokens(code: string): Promise<ExchangeResul
 }
 
 // ---------------------------------------------------------------------------
-// Credential store (ts_google_credentials)
+// Credential store (rl_google_credentials)
 // ---------------------------------------------------------------------------
 
 export type SaveCredentialsInput = {
@@ -185,7 +185,7 @@ export async function deleteCredentials(userId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// One-time consent state (ts_oauth_states, 10-minute TTL)
+// One-time consent state (rl_oauth_states, 10-minute TTL)
 // ---------------------------------------------------------------------------
 
 /** Creates a fresh state nonce for this user; returns the value to embed in

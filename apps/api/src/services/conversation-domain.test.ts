@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * Unit tests for the conversation domain (CP03) with a mocked `pg` Pool —
+ * Unit tests for the conversation domain (CP03) with a mocked `pg` Pool ï¿½
  * same pattern as queue-service.test.ts (vi.hoisted mock + vi.resetModules
  * so the lazy pool singleton never leaks between tests).
  */
@@ -87,8 +87,8 @@ describe('conversation-domain', () => {
 
       expect(customer).toMatchObject({ id: 'cust-1', phone: '+15551234567', organizationId: 'org-1' });
       const [sql, params] = mocks.query.mock.calls[1] as [string, unknown[]];
-      expect(sql).toContain('insert into public.ts_customers');
-      expect(sql).toContain('on conflict on constraint ts_customers_org_phone_key');
+      expect(sql).toContain('insert into public.rl_customers');
+      expect(sql).toContain('on conflict on constraint rl_customers_org_phone_key');
       expect(params).toEqual(['org-1', '+15551234567']);
     });
 
@@ -99,7 +99,7 @@ describe('conversation-domain', () => {
       await expect(domain.findOrCreateCustomer('org-1', 'not-a-phone')).rejects.toMatchObject({
         code: 'INVALID_PHONE',
       });
-      expect(mocks.query).toHaveBeenCalledTimes(1); // org check only — no insert
+      expect(mocks.query).toHaveBeenCalledTimes(1); // org check only ï¿½ no insert
     });
 
     it('throws ORG_NOT_FOUND for a missing or inactive org', async () => {
@@ -135,7 +135,7 @@ describe('conversation-domain', () => {
 
       expect(conv.id).toBe('conv-open');
       const refreshSql = mocks.query.mock.calls[2][0] as string;
-      expect(refreshSql).toContain('update public.ts_conversations set updated_at = now()');
+      expect(refreshSql).toContain('update public.rl_conversations set updated_at = now()');
       expect(refreshSql).toContain('where id =');
     });
 
@@ -150,7 +150,7 @@ describe('conversation-domain', () => {
 
       expect(conv.id).toBe('conv-new');
       const insertSql = mocks.query.mock.calls[2][0] as string;
-      expect(insertSql).toContain('insert into public.ts_conversations');
+      expect(insertSql).toContain('insert into public.rl_conversations');
       expect(mocks.query.mock.calls[2][1]).toEqual(['org-1', 'cust-1', 'sms']);
     });
 
@@ -176,7 +176,7 @@ describe('conversation-domain', () => {
 
       expect(msg).toMatchObject({ id: 'msg-1', body: 'I need my AC fixed', direction: 'inbound' });
       const [sql] = mocks.query.mock.calls[1] as [string];
-      expect(sql).toContain('insert into public.ts_messages');
+      expect(sql).toContain('insert into public.rl_messages');
       expect(sql).toContain('received');
     });
 

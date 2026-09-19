@@ -30,14 +30,14 @@ function getPool(): Pool {
  * Insert a new escalation row. Returns the full Escalation shape
  * (id, type, customerPhone, content, status, createdAt, resolvedAt).
  *
- * The table is `ts_escalations` by default (matches the shared-project
- * `TS_` prefix convention) and can be overridden with
+ * The table is `rl_escalations` by default (matches the shared-project
+ * `RL_` prefix convention) and can be overridden with
  * `ESCALATIONS_TABLE`.
  */
 export async function createEscalation(
   input: CreateEscalationInput,
 ): Promise<Escalation> {
-  const tableName = process.env.ESCALATIONS_TABLE ?? 'ts_escalations';
+  const tableName = process.env.ESCALATIONS_TABLE ?? 'rl_escalations';
   const { type, customerPhone, content } = input;
 
   const { rows } = await getPool().query<{

@@ -74,7 +74,7 @@ describe('tradesperson queries', () => {
     const row = await findTradespersonByEmail('Sam@SoloSam.APP');
     expect(row?.email).toBe('sam@solosam.app');
     expect(mocks.query).toHaveBeenCalledWith(
-      expect.stringContaining('from ts_tradespeople'),
+      expect.stringContaining('from rl_tradespeople'),
       ['sam@solosam.app'],
     );
   });
@@ -101,18 +101,18 @@ describe('tradesperson queries', () => {
     const row = await findTradespersonById('__VG_UUID_9f3a1c2d5e6f__');
     expect(row?.display_name).toBe('Sam');
     expect(mocks.query).toHaveBeenCalledWith(
-      expect.stringContaining('from ts_tradespeople'),
+      expect.stringContaining('from rl_tradespeople'),
       ['__VG_UUID_9f3a1c2d5e6f__'],
     );
   });
 
   it('honors the TRADESPEOPLE_TABLE override env', async () => {
-    process.env.TRADESPEOPLE_TABLE = 'ts_tradespeople_test';
+    process.env.TRADESPEOPLE_TABLE = 'rl_tradespeople_test';
     const { findTradespersonByEmail } = await loadAuth();
     mocks.query.mockResolvedValueOnce({ rows: [] });
     await findTradespersonByEmail('sam@solosam.app');
     expect(mocks.query).toHaveBeenCalledWith(
-      expect.stringContaining('from ts_tradespeople_test'),
+      expect.stringContaining('from rl_tradespeople_test'),
       expect.anything(),
     );
   });
@@ -137,7 +137,7 @@ describe('tradesperson queries', () => {
     });
     expect(row.email).toBe('sam@solosam.app');
     expect(mocks.query).toHaveBeenCalledWith(
-      expect.stringContaining('insert into ts_tradespeople'),
+      expect.stringContaining('insert into rl_tradespeople'),
       ['sam@solosam.app', 'scrypt$…', 'Sam'],
     );
   });

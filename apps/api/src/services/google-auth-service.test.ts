@@ -139,18 +139,18 @@ describe('credential store', () => {
     mocks.query.mockResolvedValueOnce({ rowCount: 1 });
     await deleteCredentials('user-1');
     expect(mocks.query).toHaveBeenCalledWith(
-      expect.stringContaining('delete from public.ts_google_credentials'),
+      expect.stringContaining('delete from public.rl_google_credentials'),
       ['user-1'],
     );
   });
 
   it('honors the GOOGLE_CREDENTIALS_TABLE override', async () => {
-    process.env.GOOGLE_CREDENTIALS_TABLE = 'ts_gc_test';
+    process.env.GOOGLE_CREDENTIALS_TABLE = 'rl_gc_test';
     const { loadCredentials } = await loadAuthService();
     mocks.query.mockResolvedValueOnce({ rows: [] });
     await loadCredentials('user-1');
     expect(mocks.query).toHaveBeenCalledWith(
-      expect.stringContaining('from public.ts_gc_test'),
+      expect.stringContaining('from public.rl_gc_test'),
       ['user-1'],
     );
   });
@@ -185,12 +185,12 @@ describe('one-time consent state', () => {
   });
 
   it('honors the GOOGLE_OAUTH_STATES_TABLE override', async () => {
-    process.env.GOOGLE_OAUTH_STATES_TABLE = 'ts_states_test';
+    process.env.GOOGLE_OAUTH_STATES_TABLE = 'rl_states_test';
     const { createOauthState } = await loadAuthService();
     mocks.query.mockResolvedValueOnce({ rowCount: 1 });
     await createOauthState('user-1');
     expect(mocks.query).toHaveBeenCalledWith(
-      expect.stringContaining('into public.ts_states_test'),
+      expect.stringContaining('into public.rl_states_test'),
       expect.anything(),
     );
   });

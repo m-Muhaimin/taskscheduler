@@ -1,12 +1,12 @@
 -- ==============================================================================
--- tradescheduler (prefix TS) — escalations table (build-sequence.md Step 6)
+-- tradescheduler (prefix RL) — escalations table (build-sequence.md Step 6)
 -- REPO COPY of the share-ready migration applied via dbctl:
---   ~/.supabase/migrations/TS/TS_002_000_escalations_table.sql
+--   ~/.supabase/migrations/RL/RL_002_000_escalations_table.sql
 -- In the muhai-shared Supabase project every table is public.<PREFIX>_<name>
--- (here ts_escalations) — see ~/.supabase/projects.json.
+-- (here rl_escalations) — see ~/.supabase/projects.json.
 -- ============================================================================
 
-create table if not exists public.ts_escalations (
+create table if not exists public.rl_escalations (
   id         uuid primary key default gen_random_uuid(),
   type       text not null
              check (type in (
@@ -24,11 +24,11 @@ create table if not exists public.ts_escalations (
   resolved_at timestamptz
 );
 
-comment on table public.ts_escalations is
+comment on table public.rl_escalations is
   'tradescheduler escalations — unresolved operational issues surfaced by the worker (RLS deny-by-default)';
 
-create index if not exists ts_escalations_status_created_idx
-  on public.ts_escalations (status, created_at);
+create index if not exists rl_escalations_status_created_idx
+  on public.rl_escalations (status, created_at);
 
-alter table public.ts_escalations enable row level security;
-revoke all on public.ts_escalations from anon, authenticated;
+alter table public.rl_escalations enable row level security;
+revoke all on public.rl_escalations from anon, authenticated;

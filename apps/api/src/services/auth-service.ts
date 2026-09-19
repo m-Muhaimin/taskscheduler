@@ -107,7 +107,7 @@ function getPool(): Pool {
 
 /** Table override env matches the escalation-service convention. */
 export function tradespeopleTable(): string {
-  return process.env.TRADESPEOPLE_TABLE ?? 'ts_tradespeople';
+  return process.env.TRADESPEOPLE_TABLE ?? 'rl_tradespeople';
 }
 
 export type TradespersonRow = {

@@ -48,7 +48,7 @@ async function main() {
   try {
     // --- Setup: ensure org exists ---
     await pool.query(
-      `insert into public.ts_organizations (id, name, slug, timezone, status)
+      `insert into public.rl_organizations (id, name, slug, timezone, status)
        values ($1, $2, $3, 'America/New_York', 'active')
        on conflict (id) do nothing`,
       [orgId, 'E2E Test Org', 'e2e-test-org'],
@@ -64,7 +64,7 @@ async function main() {
 
     // Verify exactly one customer row.
     const { rows: [customerCount] } = await pool.query<{ count: string }>(
-      `select count(*)::text as count from public.ts_customers where organization_id = $1 and phone = $2`,
+      `select count(*)::text as count from public.rl_customers where organization_id = $1 and phone = $2`,
       [orgId, phone],
     );
     const customerRowCount = parseInt(customerCount.count, 10);
@@ -113,7 +113,7 @@ async function main() {
 
     // Verify two messages in the same conversation.
     const messages = await queryAll<{ id: string }>(
-      `select id from public.ts_messages where conversation_id = $1 order by created_at`,
+      `select id from public.rl_messages where conversation_id = $1 order by created_at`,
       [conversation.id],
     );
     results.push(
@@ -127,7 +127,7 @@ async function main() {
     console.log('[E2E closed→new] Close conversation, next message opens new one');
 
     await pool.query(
-      `update public.ts_conversations set status = 'closed', closed_at = now() where id = $1`,
+      `update public.rl_conversations set status = 'closed', closed_at = now() where id = $1`,
       [conversation.id],
     );
 
@@ -160,7 +160,7 @@ async function main() {
     }
 
     const { rows: [raceCount] } = await pool.query<{ count: string }>(
-      `select count(*)::text as count from public.ts_customers where organization_id = $1 and phone = $2`,
+      `select count(*)::text as count from public.rl_customers where organization_id = $1 and phone = $2`,
       [orgId, racePhone],
     );
     const raceRowCount = parseInt(raceCount.count, 10);

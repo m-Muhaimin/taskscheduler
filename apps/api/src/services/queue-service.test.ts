@@ -46,7 +46,7 @@ function row(overrides: Record<string, unknown> = {}) {
 }
 
 describe('queue-service', () => {
-  it('enqueue inserts a pending job into ts_jobs and returns the mapped job', async () => {
+  it('enqueue inserts a pending job into rl_jobs and returns the mapped job', async () => {
     const qs = await loadQueue();
     mocks.query.mockResolvedValue({ rows: [row({ id: 'job-enqueue-1' })] });
 
@@ -55,7 +55,7 @@ describe('queue-service', () => {
     expect(job).toMatchObject({ id: 'job-enqueue-1', type: 'inbound_sms', status: 'pending' });
     expect(job.payload).toEqual({ From: '+15551234567' });
     const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('insert into ts_jobs');
+    expect(sql).toContain('insert into rl_jobs');
     expect(sql).toContain('returning');
     expect(params).toHaveLength(2);
     expect(params[0]).toBe('inbound_sms');
@@ -84,7 +84,7 @@ describe('queue-service', () => {
     const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('for update skip locked');
     expect(sql).toContain('status = \'pending\'');
-    expect(sql).toContain('update ts_jobs');
+    expect(sql).toContain('update rl_jobs');
     expect(params).toEqual(['worker-1']);
   });
 
@@ -102,7 +102,7 @@ describe('queue-service', () => {
     await qs.complete('job-1');
 
     const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('update ts_jobs');
+    expect(sql).toContain('update rl_jobs');
     expect(sql).toContain("status = 'completed'");
     expect(sql).toContain('locked_by = null');
     expect(params).toEqual(['job-1']);
@@ -116,7 +116,7 @@ describe('queue-service', () => {
     await qs.fail('job-1', new Error('boom'));
 
     const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('update ts_jobs');
+    expect(sql).toContain('update rl_jobs');
     expect(sql).toContain("status = 'failed'");
     expect(params).toEqual(['job-1']);
     expect(errorSpy).toHaveBeenCalled();

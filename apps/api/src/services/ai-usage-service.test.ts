@@ -46,7 +46,7 @@ function row(overrides: Record<string, unknown> = {}) {
 }
 
 describe('recordAiUsage', () => {
-  it('inserts a usage row into ts_ai_usage with caller-provided cost', async () => {
+  it('inserts a usage row into rl_ai_usage with caller-provided cost', async () => {
     const { recordAiUsage } = await loadService();
     mocks.query.mockResolvedValue({ rows: [row()] });
 
@@ -72,7 +72,7 @@ describe('recordAiUsage', () => {
     });
 
     const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('insert into ts_ai_usage');
+    expect(sql).toContain('insert into rl_ai_usage');
     expect(sql).toContain('returning');
     expect(params).toEqual(['req-1', 'openai', 'gpt-4o-mini', 1000, 500, 0.00045, 'llm']);
   });
@@ -91,7 +91,7 @@ describe('recordAiUsage', () => {
 
     // 1000 * 0.15/1M + 500 * 0.6/1M = 0.00015 + 0.0003 = 0.00045
     const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('insert into ts_ai_usage');
+    expect(sql).toContain('insert into rl_ai_usage');
     expect(params).toEqual(['req-2', 'openai', 'gpt-4o-mini', 1000, 500, 0.00045, 'llm']);
   });
 
@@ -113,7 +113,7 @@ describe('recordAiUsage', () => {
   });
 
   it('honors the AI_USAGE_TABLE override', async () => {
-    process.env.AI_USAGE_TABLE = 'ts_ai_usage_test';
+    process.env.AI_USAGE_TABLE = 'rl_ai_usage_test';
     const { recordAiUsage } = await loadService();
     mocks.query.mockResolvedValue({ rows: [row()] });
 
@@ -127,7 +127,7 @@ describe('recordAiUsage', () => {
     });
 
     const [sql] = mocks.query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('insert into ts_ai_usage_test');
+    expect(sql).toContain('insert into rl_ai_usage_test');
   });
 
   it('throws when the insert returns no row', async () => {

@@ -9,7 +9,7 @@ import { Pool } from 'pg';
 import type { ConversationState, ConversationStateValue, OfferedSlot } from '@tradescheduler/shared';
 
 // ---------------------------------------------------------------------------
-// Row type (matching ts_conversation_states columns)
+// Row type (matching rl_conversation_states columns)
 // ---------------------------------------------------------------------------
 
 interface ConversationRow {
@@ -44,7 +44,7 @@ function getPool(): Pool {
 }
 
 function table(): string {
-  return process.env.CONVERSATION_STATES_TABLE ?? 'ts_conversation_states';
+  return process.env.CONVERSATION_STATES_TABLE ?? 'rl_conversation_states';
 }
 
 // ---------------------------------------------------------------------------

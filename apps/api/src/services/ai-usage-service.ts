@@ -52,9 +52,9 @@ export function estimateCostUsd(provider: string, tokensInput: number, tokensOut
   return Math.round(((inputCost + outputCost) / 1_000_000) * 1_000_000) / 1_000_000;
 }
 
-/** Table name honors the muhai-shared project prefix convention: ts_ai_usage. */
+/** Table name honors the muhai-shared project prefix convention: rl_ai_usage. */
 function aiUsageTable(): string {
-  return process.env.AI_USAGE_TABLE ?? 'ts_ai_usage';
+  return process.env.AI_USAGE_TABLE ?? 'rl_ai_usage';
 }
 
 let pool: Pool | null = null;

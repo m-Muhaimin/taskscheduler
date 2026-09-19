@@ -13,12 +13,12 @@ const aptId = randomUUID();
 
 try {
   await pool.query(
-    `insert into public.ts_organizations (id, name, slug, timezone, status)
+    `insert into public.rl_organizations (id, name, slug, timezone, status)
      values ($1, 'E2E Booking Org', 'e2e-booking-org', 'America/New_York', 'active')`,
     [orgId],
   );
   await pool.query(
-    `insert into public.ts_tradespeople (id, email, password_hash, display_name,
+    `insert into public.rl_tradespeople (id, email, password_hash, display_name,
        phone_number, google_calendar_id, business_hours, sms_reschedule_template)
      values ($1, lower($2), 'x', 'E2E Tech', '+15558880000', 'primary',
        '{"start":"08:00","end":"16:00","timezone":"America/New_York"}'::jsonb,
@@ -26,7 +26,7 @@ try {
     [userId, `e2e-${Date.now()}@tradescheduler.test`],
   );
   await pool.query(
-    `insert into public.ts_appointments
+    `insert into public.rl_appointments
        (id, organization_id, user_id, customer_phone, customer_name,
         service_description, start_time, end_time, status, deposit_status)
      values ($1, $2, $3, '+15551234567', 'Sam', 'drain fix',
@@ -70,8 +70,8 @@ try {
   console.log('byId:', byId?.id, '| byPhone:', byPhone?.id, '| wrongOrg:', byPhoneWrongOrg, '| user:', user?.googleCalendarId, user?.businessHours.start, '| confirmed:', confirmed?.status, confirmed?.googleCalendarEventId, '| reread:', reread?.status, '| wrongOrgPersist:', wrongOrgPersist);
   console.log(ok ? '[SMOKE] ALL BOOKING LOOKUPS PASSED' : '[SMOKE] FAILED');
 } finally {
-  await pool.query('delete from public.ts_appointments where id = $1', [aptId]);
-  await pool.query('delete from public.ts_tradespeople where id = $1', [userId]);
-  await pool.query('delete from public.ts_organizations where id = $1', [orgId]);
+  await pool.query('delete from public.rl_appointments where id = $1', [aptId]);
+  await pool.query('delete from public.rl_tradespeople where id = $1', [userId]);
+  await pool.query('delete from public.rl_organizations where id = $1', [orgId]);
   await pool.end();
 }

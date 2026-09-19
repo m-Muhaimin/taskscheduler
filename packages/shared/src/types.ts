@@ -270,12 +270,12 @@ export type AuthErrorResponse = {
 };
 
 // ── Google OAuth (real wiring; replaces GOOGLE_REFRESH_TOKEN_<userId> env) ──
-// The API stores Google OAuth tokens per tradesperson (ts_google_credentials)
+// The API stores Google OAuth tokens per tradesperson (rl_google_credentials)
 // and the web settings page drives the connect/disconnect flow via
-// /api/auth/google/*. AuthUser.id is the ts_tradespeople row id (creds.user_id).
+// /api/auth/google/*. AuthUser.id is the rl_tradespeople row id (creds.user_id).
 
 export type GoogleCredentials = {
-  /** ts_tradespeople.id of the owner. */
+  /** rl_tradespeople.id of the owner. */
   userId: string;
   accessToken: string;
   /** Present because the consent flow uses access_type=offline+prompt=consent. */

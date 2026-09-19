@@ -41,9 +41,9 @@ interface JobRow {
   updated_at: Date | string;
 }
 
-/** Table name honors the muhai-shared project prefix convention: ts_jobs (TS). */
+/** Table name honors the muhai-shared project prefix convention: rl_jobs (RL). */
 function jobTable(): string {
-  return process.env.QUEUE_JOBS_TABLE ?? 'ts_jobs';
+  return process.env.QUEUE_JOBS_TABLE ?? 'rl_jobs';
 }
 
 let pool: Pool | null = null;

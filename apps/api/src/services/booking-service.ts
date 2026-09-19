@@ -2,9 +2,9 @@
  * Booking/appointment domain service (CP04).
  *
  * Replaces the worker's TODO stubs with real lookups:
- *   findBookingById   — booking from ts_appointments by id (org-scoped)
+ *   findBookingById   — booking from rl_appointments by id (org-scoped)
  *   findBookingByPhone — most recent booking for a customer phone (org-scoped)
- *   findUserProfile    — tradesperson row from ts_tradespeople → shared User
+ *   findUserProfile    — tradesperson row from rl_tradespeople → shared User
  *
  * Env-free boot: DATABASE_URL read on first use (same pattern as
  * conversation-domain.ts / conversation-service.ts). Mocks swap the pool via
@@ -32,7 +32,7 @@ function getPool(): Pool {
 }
 
 // ---------------------------------------------------------------------------
-// Row types (ts_appointments)
+// Row types (rl_appointments)
 // ---------------------------------------------------------------------------
 
 interface AppointmentRow {
@@ -86,7 +86,7 @@ export async function findBookingById(
 ): Promise<Booking | null> {
   const { rows } = await getPool().query<AppointmentRow>(
     `select ${APPOINTMENT_COLUMNS}
-       from public.ts_appointments
+       from public.rl_appointments
       where id = $1 and organization_id = $2`,
     [bookingId, organizationId],
   );
@@ -100,7 +100,7 @@ export async function findBookingByPhone(
 ): Promise<Booking | null> {
   const { rows } = await getPool().query<AppointmentRow>(
     `select ${APPOINTMENT_COLUMNS}
-       from public.ts_appointments
+       from public.rl_appointments
       where organization_id = $1 and customer_phone = $2
       order by start_time desc
       limit 1`,
@@ -124,7 +124,7 @@ export async function findUserBookingsInWindow(
 ): Promise<Booking[]> {
   const { rows } = await getPool().query<AppointmentRow>(
     `select ${APPOINTMENT_COLUMNS}
-       from public.ts_appointments
+       from public.rl_appointments
       where organization_id = $1
         and user_id = $2
         and status in ('pending', 'confirmed')
@@ -148,7 +148,7 @@ export interface BookingStatusPatch {
 }
 
 /**
- * Persist the confirmed reschedule on ts_appointments (org-scoped).
+ * Persist the confirmed reschedule on rl_appointments (org-scoped).
  * Returns the updated Booking, or null when the row does not exist.
  */
 export async function updateBookingTimes(
@@ -157,7 +157,7 @@ export async function updateBookingTimes(
   patch: BookingStatusPatch,
 ): Promise<Booking | null> {
   const { rows } = await getPool().query<AppointmentRow>(
-    `update public.ts_appointments
+    `update public.rl_appointments
         set start_time = $1,
             end_time = $2,
             status = $3,
@@ -196,7 +196,7 @@ const DEFAULT_RESCHEDULE_TEMPLATE =
 export async function findUserProfile(userId: string): Promise<User | null> {
   const { rows } = await getPool().query<TradespersonRow>(
     `select id, phone_number, google_calendar_id, business_hours, sms_reschedule_template
-       from public.ts_tradespeople
+       from public.rl_tradespeople
       where id = $1`,
     [userId],
   );
@@ -221,7 +221,7 @@ export async function setUserGoogleCalendarId(
   calendarId: string | null,
 ): Promise<boolean> {
   const { rowCount } = await getPool().query(
-    `update public.ts_tradespeople
+    `update public.rl_tradespeople
         set google_calendar_id = $2
       where id = $1`,
     [userId, calendarId],

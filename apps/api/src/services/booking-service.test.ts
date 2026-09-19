@@ -135,7 +135,7 @@ describe('booking-service', () => {
         rescheduleLog: [],
       });
       const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
-      expect(sql).toContain('from public.ts_appointments');
+      expect(sql).toContain('from public.rl_appointments');
       expect(sql).toContain('id = $1 and organization_id = $2');
       expect(params).toEqual(['apt-1', 'org-1']);
     });
@@ -227,7 +227,7 @@ describe('booking-service', () => {
       mocks.query.mockResolvedValueOnce({ rowCount: 1 });
       await expect(svc.setUserGoogleCalendarId('user-1', 'primary')).resolves.toBe(true);
       expect(mocks.query).toHaveBeenCalledWith(
-        expect.stringContaining('update public.ts_tradespeople'),
+        expect.stringContaining('update public.rl_tradespeople'),
         ['user-1', 'primary'],
       );
     });

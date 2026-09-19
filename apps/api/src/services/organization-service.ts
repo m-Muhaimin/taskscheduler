@@ -25,11 +25,11 @@ function getPool(): Pool {
 }
 
 function organizationsTable(): string {
-  return process.env.ORGANIZATIONS_TABLE ?? 'ts_organizations';
+  return process.env.ORGANIZATIONS_TABLE ?? 'rl_organizations';
 }
 
 function twilioNumbersTable(): string {
-  return process.env.TWILIO_NUMBERS_TABLE ?? 'ts_twilio_numbers';
+  return process.env.TWILIO_NUMBERS_TABLE ?? 'rl_twilio_numbers';
 }
 
 // ---------------------------------------------------------------------------

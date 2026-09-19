@@ -200,7 +200,7 @@ export async function findOrCreateCustomer(
 ): Promise<Customer> {
   // Validate org exists and is active.
   const org = await getPool().query<{ id: string; status: string }>(
-    `select id, status from public.ts_organizations where id = $1`,
+    `select id, status from public.rl_organizations where id = $1`,
     [organizationId],
   );
   if (org.rows.length === 0) {
@@ -217,9 +217,9 @@ export async function findOrCreateCustomer(
 
   try {
     const { rows } = await getPool().query<CustomerRow>(
-      `insert into public.ts_customers (organization_id, phone, name, email, updated_at)
+      `insert into public.rl_customers (organization_id, phone, name, email, updated_at)
        values ($1, $2, null, null, now())
-       on conflict on constraint ts_customers_org_phone_key
+       on conflict on constraint rl_customers_org_phone_key
        do update set updated_at = now()
        returning id, organization_id, name, phone, email, created_at, updated_at`,
       [organizationId, phone],
@@ -248,7 +248,7 @@ export async function findOrCreateConversation(
 ): Promise<Conversation> {
   // Validate customer exists.
   const customer = await getPool().query<{ id: string; organization_id: string }>(
-    `select id, organization_id from public.ts_customers where id = $1`,
+    `select id, organization_id from public.rl_customers where id = $1`,
     [customerId],
   );
   if (customer.rows.length === 0) {
@@ -266,7 +266,7 @@ export async function findOrCreateConversation(
     const existing = await getPool().query<ConversationRow>(
       `select id, organization_id, customer_id, channel, status, intent, current_state,
               assigned_user_id, missing_information, created_at, updated_at, closed_at
-       from public.ts_conversations
+       from public.rl_conversations
        where customer_id = $1
          and channel = $2
          and status = 'open'
@@ -279,7 +279,7 @@ export async function findOrCreateConversation(
     if (existing.rows.length > 0) {
       // Refresh updated_at on the found conversation.
       const { rows: [refreshed] } = await getPool().query<ConversationRow>(
-        `update public.ts_conversations set updated_at = now() where id = $1 returning id, organization_id, customer_id, channel, status, intent, current_state, assigned_user_id, missing_information, created_at, updated_at, closed_at`,
+        `update public.rl_conversations set updated_at = now() where id = $1 returning id, organization_id, customer_id, channel, status, intent, current_state, assigned_user_id, missing_information, created_at, updated_at, closed_at`,
         [existing.rows[0].id],
       );
       if (!refreshed) {
@@ -290,7 +290,7 @@ export async function findOrCreateConversation(
 
     // No open conversation — create one.
     const { rows: [created] } = await getPool().query<ConversationRow>(
-      `insert into public.ts_conversations (organization_id, customer_id, channel, current_state, missing_information)
+      `insert into public.rl_conversations (organization_id, customer_id, channel, current_state, missing_information)
        values ($1, $2, $3, 'new', '[]'::jsonb)
        returning id, organization_id, customer_id, channel, status, intent, current_state, assigned_user_id, missing_information, created_at, updated_at, closed_at`,
       [organizationId, customerId, channel],
@@ -319,7 +319,7 @@ export async function appendMessage(
 ): Promise<Message> {
   // Validate conversation exists and is open.
   const conv = await getPool().query<ConversationRow>(
-    `select id, status, channel from public.ts_conversations where id = $1`,
+    `select id, status, channel from public.rl_conversations where id = $1`,
     [conversationId],
   );
   if (conv.rows.length === 0) {
@@ -341,7 +341,7 @@ export async function appendMessage(
 
   try {
     const { rows: [created] } = await getPool().query<MessageRow>(
-      `insert into public.ts_messages (conversation_id, provider, provider_message_id, direction, body, status, metadata)
+      `insert into public.rl_messages (conversation_id, provider, provider_message_id, direction, body, status, metadata)
        values ($1, $2, $3, $4, $5, 'received', $6::jsonb)
        returning id, conversation_id, provider, provider_message_id, direction, body, status, metadata, created_at`,
       [
@@ -360,7 +360,7 @@ export async function appendMessage(
 
     // Refresh conversation's updated_at.
     await getPool().query(
-      `update public.ts_conversations set updated_at = now() where id = $1`,
+      `update public.rl_conversations set updated_at = now() where id = $1`,
       [conversationId],
     );
 
