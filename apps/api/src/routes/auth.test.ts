@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   hashPassword: vi.fn(),
   verifyPassword: vi.fn(),
   toAuthUser: vi.fn(),
+  updateTradespersonProfile: vi.fn(),
+  updateTradespersonPassword: vi.fn(),
 }));
 
 vi.mock('../services/auth-service.js', () => mocks);
@@ -25,7 +27,7 @@ const JWT_SECRET = 'test_jwt_secret_000_secret_000';
 const USER_ID = '__VG_UUID_f4a3b2c1d0e9__';
 const EMAIL = 'sam@solo-sam.test'; // fixture emails in routes are opaque tokens; zod .email() needs a real shape
 const DISPLAY_NAME = 'Sam';
-const AUTH_USER = { id: USER_ID, email: EMAIL, displayName: DISPLAY_NAME };
+const AUTH_USER = { id: USER_ID, email: EMAIL, displayName: DISPLAY_NAME, phoneNumber: null };
 
 let server: Server;
 let baseUrl: string;
@@ -33,6 +35,14 @@ let baseUrl: string;
 function post(path: string, body: unknown, headers: Record<string, string> = {}) {
   return fetch(`${baseUrl}${path}`, {
     method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+function patch(path: string, body: unknown, headers: Record<string, string> = {}) {
+  return fetch(`${baseUrl}${path}`, {
+    method: 'PATCH',
     headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
@@ -57,10 +67,13 @@ beforeEach(() => {
   mocks.createTradesperson.mockReset();
   mocks.hashPassword.mockReset();
   mocks.verifyPassword.mockReset();
+  mocks.updateTradespersonProfile.mockReset();
+  mocks.updateTradespersonPassword.mockReset();
   mocks.toAuthUser.mockImplementation((row) => ({
     id: row.id,
     email: row.email,
     displayName: row.display_name,
+    phoneNumber: row.phone_number ?? null,
   }));
 });
 
@@ -265,5 +278,239 @@ describe('GET /api/auth/me', () => {
     } finally {
       process.env.JWT_SECRET = saved;
     }
+  });
+});
+
+describe('PATCH /api/auth/profile', () => {
+  function validToken(): string {
+    return jwt.sign({ sub: USER_ID, email: EMAIL }, JWT_SECRET, { issuer: 'tradescheduler' });
+  }
+
+  function authHeaders(): Record<string, string> {
+    return { authorization: `Bearer ${validToken()}` };
+  }
+
+  it('200 with the updated user when changing displayName', async () => {
+    const row = {
+      id: USER_ID,
+      email: EMAIL,
+      password_hash: 'scrypt$…',
+      display_name: 'Sam Jr',
+      phone_number: null,
+    };
+    mocks.updateTradespersonProfile.mockResolvedValueOnce(row);
+    const res = await patch('/api/auth/profile', { displayName: 'Sam Jr' }, authHeaders());
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      user: { id: USER_ID, email: EMAIL, displayName: 'Sam Jr', phoneNumber: null },
+    });
+    expect(mocks.updateTradespersonProfile).toHaveBeenCalledWith(USER_ID, { displayName: 'Sam Jr' });
+    expect(mocks.findTradespersonByEmail).not.toHaveBeenCalled();
+  });
+
+  it('200 with the updated user when setting phoneNumber', async () => {
+    const row = {
+      id: USER_ID,
+      email: EMAIL,
+      password_hash: 'scrypt$…',
+      display_name: DISPLAY_NAME,
+      phone_number: '+15551234567',
+    };
+    mocks.updateTradespersonProfile.mockResolvedValueOnce(row);
+    const res = await patch('/api/auth/profile', { phoneNumber: '+15551234567' }, authHeaders());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { user: Record<string, unknown> };
+    expect(body.user.phoneNumber).toBe('+15551234567');
+  });
+
+  it('200 clearing phoneNumber with null', async () => {
+    const row = {
+      id: USER_ID,
+      email: EMAIL,
+      password_hash: 'scrypt$…',
+      display_name: DISPLAY_NAME,
+      phone_number: null,
+    };
+    mocks.updateTradespersonProfile.mockResolvedValueOnce(row);
+    const res = await patch('/api/auth/profile', { phoneNumber: null }, authHeaders());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { user: Record<string, unknown> };
+    expect(body.user.phoneNumber).toBeNull();
+    expect(mocks.updateTradespersonProfile).toHaveBeenCalledWith(USER_ID, { phoneNumber: null });
+  });
+
+  it('200 clearing phoneNumber with empty string', async () => {
+    const row = {
+      id: USER_ID,
+      email: EMAIL,
+      password_hash: 'scrypt$…',
+      display_name: DISPLAY_NAME,
+      phone_number: null,
+    };
+    mocks.updateTradespersonProfile.mockResolvedValueOnce(row);
+    const res = await patch('/api/auth/profile', { phoneNumber: '' }, authHeaders());
+    expect(res.status).toBe(200);
+    expect(mocks.updateTradespersonProfile).toHaveBeenCalledWith(USER_ID, { phoneNumber: null });
+  });
+
+  it('200 with the updated user when changing email (lowercased)', async () => {
+    const sentEmail = `${EMAIL.toLowerCase().replace('@', '+new@')}`; // derived valid email
+    const existingEmail = sentEmail.toUpperCase(); // zod lowercases on parse
+    mocks.findTradespersonByEmail.mockResolvedValueOnce(null);
+    const row = {
+      id: USER_ID,
+      email: sentEmail,
+      password_hash: 'scrypt$…',
+      display_name: DISPLAY_NAME,
+      phone_number: null,
+    };
+    mocks.updateTradespersonProfile.mockResolvedValueOnce(row);
+    const res = await patch('/api/auth/profile', { email: existingEmail }, authHeaders());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { user: Record<string, unknown> };
+    expect(body.user.email).toBe(sentEmail);
+    expect(mocks.findTradespersonByEmail).toHaveBeenCalledWith(sentEmail);
+    expect(mocks.updateTradespersonProfile).toHaveBeenCalledWith(USER_ID, {
+      email: sentEmail,
+    });
+  });
+
+  it('200 no-op when the email already belongs to self', async () => {
+    const self = {
+      id: USER_ID,
+      email: EMAIL,
+      password_hash: 'scrypt$…',
+      display_name: DISPLAY_NAME,
+      phone_number: null,
+    };
+    mocks.findTradespersonByEmail.mockResolvedValueOnce(self);
+    mocks.updateTradespersonProfile.mockResolvedValueOnce(self);
+    const res = await patch('/api/auth/profile', { email: EMAIL }, authHeaders());
+    expect(res.status).toBe(200);
+    expect(mocks.updateTradespersonProfile).toHaveBeenCalled();
+  });
+
+  it('409 email_taken when another tradesperson holds the email', async () => {
+    const other = {
+      id: '__VG_UUID_a1b2c3d4e5f6__',
+      email: EMAIL,
+      password_hash: 'scrypt$…',
+      display_name: 'Someone Else',
+      phone_number: null,
+    };
+    mocks.findTradespersonByEmail.mockResolvedValueOnce(other);
+    const res = await patch('/api/auth/profile', { email: EMAIL }, authHeaders());
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({ error: 'email_taken' });
+    expect(mocks.updateTradespersonProfile).not.toHaveBeenCalled();
+  });
+
+  it('400 invalid_body for an empty body', async () => {
+    const res = await patch('/api/auth/profile', {}, authHeaders());
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: 'invalid_body' });
+  });
+
+  it('400 invalid_body for a malformed phoneNumber', async () => {
+    const res = await patch('/api/auth/profile', { phoneNumber: 'not-a-phone' }, authHeaders());
+    expect(res.status).toBe(400);
+  });
+
+  it('400 invalid_body for an over-long displayName', async () => {
+    const res = await patch(
+      '/api/auth/profile',
+      { displayName: 'x'.repeat(81) },
+      authHeaders(),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('401 missing_token without an Authorization header', async () => {
+    const res = await patch('/api/auth/profile', { displayName: 'Sam Jr' });
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ error: 'missing_token' });
+  });
+});
+
+describe('POST /api/auth/change-password', () => {
+  const stored = 'scrypt$16384$8$1$…';
+  const row = {
+    id: USER_ID,
+    email: EMAIL,
+    password_hash: stored,
+    display_name: DISPLAY_NAME,
+    phone_number: null,
+  };
+
+  function validToken(): string {
+    return jwt.sign({ sub: USER_ID, email: EMAIL }, JWT_SECRET, { issuer: 'tradescheduler' });
+  }
+
+  it('200 { ok: true } when the current password verifies', async () => {
+    mocks.findTradespersonById.mockResolvedValueOnce(row);
+    mocks.verifyPassword.mockResolvedValueOnce(true);
+    mocks.hashPassword.mockResolvedValueOnce('scrypt$16384$8$1$new$hash');
+    mocks.updateTradespersonPassword.mockResolvedValueOnce(undefined);
+    const res = await post(
+      '/api/auth/change-password',
+      { currentPassword: 's3cret-pass-123', newPassword: 'new-pass-4567' },
+      { authorization: `Bearer ${validToken()}` },
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(mocks.verifyPassword).toHaveBeenCalledWith('s3cret-pass-123', stored);
+    expect(mocks.updateTradespersonPassword).toHaveBeenCalledWith(USER_ID, 'scrypt$16384$8$1$new$hash');
+  });
+
+  it('401 invalid_credentials when the current password is wrong', async () => {
+    mocks.findTradespersonById.mockResolvedValueOnce(row);
+    mocks.verifyPassword.mockResolvedValueOnce(false);
+    const res = await post(
+      '/api/auth/change-password',
+      { currentPassword: 'wrong-password', newPassword: 'new-pass-4567' },
+      { authorization: `Bearer ${validToken()}` },
+    );
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ error: 'invalid_credentials' });
+    expect(mocks.updateTradespersonPassword).not.toHaveBeenCalled();
+  });
+
+  it('400 invalid_body for a short new password', async () => {
+    const res = await post(
+      '/api/auth/change-password',
+      { currentPassword: 's3cret-pass-123', newPassword: 'short' },
+      { authorization: `Bearer ${validToken()}` },
+    );
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: 'invalid_body' });
+  });
+
+  it('400 invalid_body when fields are missing', async () => {
+    const res = await post(
+      '/api/auth/change-password',
+      { currentPassword: 's3cret-pass-123' },
+      { authorization: `Bearer ${validToken()}` },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('404 invalid_token for a token of a deleted account', async () => {
+    mocks.findTradespersonById.mockResolvedValueOnce(null);
+    const res = await post(
+      '/api/auth/change-password',
+      { currentPassword: 's3cret-pass-123', newPassword: 'new-pass-4567' },
+      { authorization: `Bearer ${validToken()}` },
+    );
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: 'invalid_token' });
+  });
+
+  it('401 missing_token without an Authorization header', async () => {
+    const res = await post('/api/auth/change-password', {
+      currentPassword: 's3cret-pass-123',
+      newPassword: 'new-pass-4567',
+    });
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ error: 'missing_token' });
   });
 });

@@ -1,23 +1,30 @@
 "use client";
 
-import { useState } from "react";
 import { AiInboxList } from "@/components/dashboard/ai-inbox-list";
-import { inboxItems } from "@/lib/fixtures";
+import { InboxListSkeleton } from "@/components/dashboard/skeletons";
+import { PageHeader } from "@/components/ui/page-header";
+import { ErrorState } from "@/components/dashboard/error-state";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { getInboxItems, useDashboardData } from "@/lib/dashboard-api";
 
 export default function InboxPage() {
-  const [, setAttentionCount] = useState(
-    inboxItems.filter((i) => i.state === "attention").length
-  );
+  const { state, retry } = useDashboardData(() => getInboxItems());
 
   return (
     <div>
-      <div className="mb-4">
-        <p className="font-head font-semibold text-[15px]">AI Inbox</p>
-        <p className="text-[12.5px] text-ink-muted mt-0.5">
-          Conversations the AI is running, handled, or needs you to look at.
-        </p>
-      </div>
-      <AiInboxList items={inboxItems} showFilters onCountChange={setAttentionCount} />
+      <PageHeader
+        title="AI Inbox"
+        description="Conversations the AI is running, handled, or needs you to look at."
+      />
+      {state.status === "loading" && <InboxListSkeleton rows={6} />}
+      {state.status === "error" && <ErrorState message={state.message} onRetry={retry} label="the inbox" />}
+      {state.status === "empty" && (
+        <EmptyState
+          title="No conversations yet"
+          description="When the AI starts answering calls and texts, the inbox fills up here — nothing gets missed."
+        />
+      )}
+      {state.status === "ready" && <AiInboxList items={state.data.items} showFilters />}
     </div>
   );
 }

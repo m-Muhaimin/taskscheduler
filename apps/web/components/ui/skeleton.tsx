@@ -1,13 +1,16 @@
-interface SkeletonProps {
-  className?: string;
-}
+import clsx from "clsx";
+import type { CSSProperties } from "react";
 
-/**
- * Shimmer placeholder block. Callers size it via className
- * (e.g. "h-12 w-full", "h-4 w-24 rounded-[10px]"). The shimmer sweep lives in
- * globals.css (.skeleton) and is disabled under prefers-reduced-motion.
- * Hidden from assistive tech — real content replaces it.
- */
-export function Skeleton({ className }: SkeletonProps) {
-  return <div aria-hidden="true" className={"skeleton " + (className ?? "")} />;
+/** Shimmering placeholder block. Size it with Tailwind (h-3 w-24 …). Purely visual. */
+export function Skeleton({
+  className,
+  style,
+  strong,
+}: {
+  className?: string;
+  style?: CSSProperties;
+  /** Use on surface-2 backgrounds, where the default shimmer would disappear. */
+  strong?: boolean;
+}) {
+  return <span aria-hidden="true" className={clsx("skeleton", strong && "skeleton-strong", className)} style={style} />;
 }

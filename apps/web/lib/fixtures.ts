@@ -16,6 +16,7 @@ export const overviewStats: StatItem[] = [
 export const keyMetrics: MetricGridItem[] = [
   {
     id: "appointments",
+    href: "/dashboard/schedule",
     label: "Appointments today",
     value: 12,
     chartData: [7, 8, 6, 9, 10, 9, 12],
@@ -23,6 +24,7 @@ export const keyMetrics: MetricGridItem[] = [
   },
   {
     id: "leads",
+    href: "/dashboard/customers",
     label: "New leads this week",
     value: 8,
     chartData: [3, 4, 4, 6, 5, 7, 8],
@@ -30,6 +32,7 @@ export const keyMetrics: MetricGridItem[] = [
   },
   {
     id: "booked",
+    href: "/dashboard/jobs",
     label: "Booked this week",
     value: 4280,
     prefix: "$",
@@ -38,6 +41,7 @@ export const keyMetrics: MetricGridItem[] = [
   },
   {
     id: "booking-rate",
+    href: "/dashboard/analytics",
     label: "AI booking rate",
     value: 92,
     suffix: "%",
@@ -47,6 +51,7 @@ export const keyMetrics: MetricGridItem[] = [
   },
   {
     id: "attention",
+    href: "/dashboard/inbox",
     label: "Need attention",
     value: 3,
     tone: "danger",
@@ -57,7 +62,7 @@ export const keyMetrics: MetricGridItem[] = [
 
 export const inboxItems: InboxItem[] = [
   {
-    id: 1,
+    id: "1",
     name: "John Whitfield",
     state: "attention",
     lastMessage: "\u201cThere's water pouring through the ceiling right now.\u201d",
@@ -66,7 +71,7 @@ export const inboxItems: InboxItem[] = [
     channel: "SMS",
   },
   {
-    id: 2,
+    id: "2",
     name: "Priya Anand",
     state: "active",
     lastMessage: "\u201cCan someone come after 5? I get off work then.\u201d",
@@ -75,7 +80,7 @@ export const inboxItems: InboxItem[] = [
     channel: "SMS",
   },
   {
-    id: 3,
+    id: "3",
     name: "Dale Torres",
     state: "attention",
     lastMessage: "\u201cIs the $89 diagnostic fee separate from repair cost?\u201d",
@@ -84,7 +89,7 @@ export const inboxItems: InboxItem[] = [
     channel: "SMS",
   },
   {
-    id: 4,
+    id: "4",
     name: "Sarah Kim",
     state: "handled",
     lastMessage: "\u201cPerfect, see you then!\u201d",
@@ -93,7 +98,7 @@ export const inboxItems: InboxItem[] = [
     channel: "SMS",
   },
   {
-    id: 5,
+    id: "5",
     name: "Michael Ortiz",
     state: "handled",
     lastMessage: "\u201cActually can we push to Monday?\u201d",
@@ -102,7 +107,7 @@ export const inboxItems: InboxItem[] = [
     channel: "SMS",
   },
   {
-    id: 6,
+    id: "6",
     name: "Renee Fischer",
     state: "active",
     lastMessage: "\u201cMy AC is making a rattling noise, not urgent.\u201d",
@@ -113,29 +118,29 @@ export const inboxItems: InboxItem[] = [
 ];
 
 export const todayAppointments: Appointment[] = [
-  { id: 1, time: "9:00", label: "Sarah Kim \u2014 Drain cleaning", tech: "Mike", topPercent: 8 },
-  { id: 2, time: "10:30", label: "Priya Anand \u2014 HVAC tune-up", tech: "Dave", topPercent: 26 },
-  { id: 3, time: "12:00", label: "John Whitfield \u2014 Emergency (pending)", tech: "\u2014", topPercent: 46, urgent: true },
-  { id: 4, time: "2:00", label: "Renee Fischer \u2014 Diagnostic", tech: "Mike", topPercent: 68 },
-  { id: 5, time: "4:30", label: "Dale Torres \u2014 Water heater repair", tech: "Dave", topPercent: 88 },
+  { id: "1", time: "9:00", label: "Sarah Kim \u2014 Drain cleaning", tech: "Mike", topPercent: 8 },
+  { id: "2", time: "10:30", label: "Priya Anand \u2014 HVAC tune-up", tech: "Dave", topPercent: 26 },
+  { id: "3", time: "12:00", label: "John Whitfield \u2014 Emergency (pending)", tech: "\u2014", topPercent: 46, urgent: true },
+  { id: "4", time: "2:00", label: "Renee Fischer \u2014 Diagnostic", tech: "Mike", topPercent: 68 },
+  { id: "5", time: "4:30", label: "Dale Torres \u2014 Water heater repair", tech: "Dave", topPercent: 88 },
 ];
 
 export const jobs: JobRow[] = [
-  { id: 1, customer: "Sarah Kim", service: "Drain cleaning", technician: "Mike R.", status: "Completed", value: "$180" },
-  { id: 2, customer: "Priya Anand", service: "HVAC tune-up", technician: "Dave O.", status: "Scheduled", value: "$140" },
-  { id: 3, customer: "John Whitfield", service: "Emergency plumbing", technician: "\u2014", status: "Needs dispatch", value: "\u2014" },
-  { id: 4, customer: "Renee Fischer", service: "AC diagnostic", technician: "Mike R.", status: "In progress", value: "$89" },
-  { id: 5, customer: "Dale Torres", service: "Water heater repair", technician: "Dave O.", status: "Scheduled", value: "$420" },
-  { id: 6, customer: "Elena Boyd", service: "Pipe inspection", technician: "Mike R.", status: "Completed", value: "$95" },
+  { id: "1", customer: "Sarah Kim", service: "Drain cleaning", technician: "Mike R.", status: "Completed", value: "$180" },
+  { id: "2", customer: "Priya Anand", service: "HVAC tune-up", technician: "Dave O.", status: "Scheduled", value: "$140" },
+  { id: "3", customer: "John Whitfield", service: "Emergency plumbing", technician: "\u2014", status: "Needs dispatch", value: "\u2014" },
+  { id: "4", customer: "Renee Fischer", service: "AC diagnostic", technician: "Mike R.", status: "In progress", value: "$89" },
+  { id: "5", customer: "Dale Torres", service: "Water heater repair", technician: "Dave O.", status: "Scheduled", value: "$420" },
+  { id: "6", customer: "Elena Boyd", service: "Pipe inspection", technician: "Mike R.", status: "Completed", value: "$95" },
 ];
 
 export const customers: Customer[] = [
-  { id: 1, name: "Sarah Kim", phone: "(206) 555-0142", jobCount: 3, customerSince: "2025" },
-  { id: 2, name: "Priya Anand", phone: "(206) 555-0198", jobCount: 1, customerSince: "2026" },
-  { id: 3, name: "John Whitfield", phone: "(206) 555-0110", jobCount: 5, customerSince: "2023" },
-  { id: 4, name: "Dale Torres", phone: "(206) 555-0177", jobCount: 2, customerSince: "2025" },
-  { id: 5, name: "Renee Fischer", phone: "(206) 555-0164", jobCount: 1, customerSince: "2026" },
-  { id: 6, name: "Elena Boyd", phone: "(206) 555-0133", jobCount: 4, customerSince: "2024" },
+  { id: "1", name: "Sarah Kim", phone: "(206) 555-0142", jobCount: 3, customerSince: "2025" },
+  { id: "2", name: "Priya Anand", phone: "(206) 555-0198", jobCount: 1, customerSince: "2026" },
+  { id: "3", name: "John Whitfield", phone: "(206) 555-0110", jobCount: 5, customerSince: "2023" },
+  { id: "4", name: "Dale Torres", phone: "(206) 555-0177", jobCount: 2, customerSince: "2025" },
+  { id: "5", name: "Renee Fischer", phone: "(206) 555-0164", jobCount: 1, customerSince: "2026" },
+  { id: "6", name: "Elena Boyd", phone: "(206) 555-0133", jobCount: 4, customerSince: "2024" },
 ];
 
 export const revenueRecovery = {

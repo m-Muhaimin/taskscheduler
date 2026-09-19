@@ -1,32 +1,8 @@
 import { Router } from 'express';
-import type { NextFunction, Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
 import type { RescheduleHistoryResponse } from '@tradescheduler/shared';
+import { requireAuth } from '../../../../middleware/auth.js';
 
 const router = Router();
-
-// ── JWT auth (inline — mirrors the escalations guard) ────────────────────
-const JWT_SECRET = process.env.JWT_SECRET ?? '';
-const JWT_ISSUER = process.env.JWT_ISSUER ?? 'tradescheduler';
-
-function authorize(req: Request, _res: Response, next: NextFunction): void {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    _res.status(401).json({ error: 'missing_token' });
-    return;
-  }
-  const token = header.slice(7);
-  if (!JWT_SECRET) {
-    _res.status(500).json({ error: 'server_not_configured' });
-    return;
-  }
-  try {
-    jwt.verify(token, JWT_SECRET, { issuer: JWT_ISSUER });
-    next();
-  } catch {
-    _res.status(401).json({ error: 'invalid_token' });
-  }
-}
 
 // ── In-memory reschedule logs keyed by booking id ─────────────────────────
 // Replace with a real data-layer query when the data layer lands.
@@ -54,7 +30,7 @@ const rescheduleLogs: Record<string, import('@tradescheduler/shared').Reschedule
 
 // ── GET /api/dashboard/bookings/:bookingId/reschedule-history ────────────
 
-router.get('/:bookingId/reschedule-history', authorize, (req, res) => {
+router.get('/:bookingId/reschedule-history', requireAuth, (req, res) => {
   const bookingId = req.params.bookingId;
 
   if (typeof bookingId !== 'string' || bookingId.length === 0) {

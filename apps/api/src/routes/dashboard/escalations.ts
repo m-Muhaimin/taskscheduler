@@ -1,32 +1,8 @@
 import { Router } from 'express';
-import type { NextFunction, Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
 import type { EscalationListResponse } from '@tradescheduler/shared';
+import { requireAuth } from '../../middleware/auth.js';
 
 const router = Router();
-
-// ── JWT auth (inline — no shared middleware module yet) ──────────────────
-const JWT_SECRET = process.env.JWT_SECRET ?? '';
-const JWT_ISSUER = process.env.JWT_ISSUER ?? 'tradescheduler';
-
-function authorize(req: Request, _res: Response, next: NextFunction): void {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    _res.status(401).json({ error: 'missing_token' });
-    return;
-  }
-  const token = header.slice(7);
-  if (!JWT_SECRET) {
-    _res.status(500).json({ error: 'server_not_configured' });
-    return;
-  }
-  try {
-    jwt.verify(token, JWT_SECRET, { issuer: JWT_ISSUER });
-    next();
-  } catch {
-    _res.status(401).json({ error: 'invalid_token' });
-  }
-}
 
 // ── In-memory escalation store (stand-in for a real data layer) ──────────
 // Replace with a Postgres/Supabase query when the data layer lands.
@@ -104,7 +80,7 @@ function toResponse(items: StoredEscalation[], page: number, pageSize: number): 
 
 // ── GET /api/dashboard/escalations ────────────────────────────────────────
 
-router.get('/', authorize, (req, res) => {
+router.get('/', requireAuth, (req, res) => {
   const page = Math.max(1, Number((req.query.page as string) ?? '1'));
   const pageSize = Math.max(1, Math.min(100, Number((req.query.pageSize as string) ?? '20')));
 

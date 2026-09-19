@@ -115,11 +115,17 @@ export type TradespersonRow = {
   email: string;
   password_hash: string;
   display_name: string;
+  phone_number: string | null;
   created_at: Date;
 };
 
 function toAuthUser(row: TradespersonRow): AuthUser {
-  return { id: row.id, email: row.email, displayName: row.display_name };
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    phoneNumber: row.phone_number,
+  };
 }
 
 export async function findTradespersonByEmail(
@@ -127,7 +133,7 @@ export async function findTradespersonByEmail(
 ): Promise<TradespersonRow | null> {
   const tableName = tradespeopleTable();
   const { rows } = await getPool().query<TradespersonRow>(
-    `select id, email, password_hash, display_name, created_at
+    `select id, email, password_hash, display_name, phone_number, created_at
      from ${tableName}
      where email = $1
      limit 1`,
@@ -145,7 +151,7 @@ export async function createTradesperson(input: {
   const { rows } = await getPool().query<TradespersonRow>(
     `insert into ${tableName} (email, password_hash, display_name)
      values ($1, $2, $3)
-     returning id, email, password_hash, display_name, created_at`,
+     returning id, email, password_hash, display_name, phone_number, created_at`,
     [input.email.toLowerCase(), input.passwordHash, input.displayName],
   );
   const row = rows[0];
@@ -162,11 +168,69 @@ export async function findTradespersonById(
 ): Promise<TradespersonRow | null> {
   const tableName = tradespeopleTable();
   const { rows } = await getPool().query<TradespersonRow>(
-    `select id, email, password_hash, display_name, created_at
+    `select id, email, password_hash, display_name, phone_number, created_at
      from ${tableName}
      where id = $1
      limit 1`,
     [id],
   );
   return rows[0] ?? null;
+}
+
+/**
+ * Update ONLY the provided profile columns, all-or-nothing in one statement,
+ * then return the fresh row. Caller (route) pre-checks email uniqueness.
+ */
+export async function updateTradespersonProfile(
+  id: string,
+  fields: {
+    displayName?: string;
+    email?: string;
+    phoneNumber?: string | null;
+  },
+): Promise<TradespersonRow> {
+  const tableName = tradespeopleTable();
+  const sets: string[] = [];
+  const params: (string | null)[] = [];
+  if (fields.displayName !== undefined) {
+    sets.push(`display_name = $${sets.length + 1}`);
+    params.push(fields.displayName);
+  }
+  if (fields.email !== undefined) {
+    sets.push(`email = $${sets.length + 1}`);
+    params.push(fields.email.toLowerCase());
+  }
+  if (fields.phoneNumber !== undefined) {
+    sets.push(`phone_number = $${sets.length + 1}`);
+    params.push(fields.phoneNumber);
+  }
+  if (sets.length === 0) {
+    throw new Error('updateTradespersonProfile: no fields provided');
+  }
+  const { rows } = await getPool().query<TradespersonRow>(
+    `update ${tableName}
+     set ${sets.join(', ')}
+     where id = $${sets.length + 1}
+     returning id, email, password_hash, display_name, phone_number, created_at`,
+    [...params, id],
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new Error('updateTradespersonProfile: no row matched');
+  }
+  return row;
+}
+
+/** Replace the credential hash (verified current password by the route). */
+export async function updateTradespersonPassword(
+  id: string,
+  passwordHash: string,
+): Promise<void> {
+  const tableName = tradespeopleTable();
+  await getPool().query(
+    `update ${tableName}
+     set password_hash = $1
+     where id = $2`,
+    [passwordHash, id],
+  );
 }

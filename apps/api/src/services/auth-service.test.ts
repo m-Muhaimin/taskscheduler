@@ -126,6 +126,7 @@ describe('tradesperson queries', () => {
           email: 'sam@solosam.app',
           password_hash: 'scrypt$…',
           display_name: 'Sam',
+          phone_number: null,
           created_at: new Date('2026-09-18T00:00:00Z'),
         },
       ],
@@ -140,5 +141,101 @@ describe('tradesperson queries', () => {
       expect.stringContaining('insert into rl_tradespeople'),
       ['sam@solosam.app', 'scrypt$…', 'Sam'],
     );
+  });
+});
+
+describe('profile updates', () => {
+  it('updateTradespersonProfile sets only the provided columns', async () => {
+    const { updateTradespersonProfile } = await loadAuth();
+    mocks.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: '__VG_UUID_9f3a1c2d5e6f__',
+          email: 'sam@solosam.app',
+          password_hash: 'scrypt$…',
+          display_name: 'Sam Jr',
+          phone_number: '+15551234567',
+          created_at: new Date('2026-09-18T00:00:00Z'),
+        },
+      ],
+    });
+    const row = await updateTradespersonProfile('__VG_UUID_9f3a1c2d5e6f__', {
+      displayName: 'Sam Jr',
+      phoneNumber: '+15551234567',
+    });
+    expect(row.display_name).toBe('Sam Jr');
+    expect(row.phone_number).toBe('+15551234567');
+    expect(mocks.query).toHaveBeenCalledWith(
+      expect.stringContaining('update rl_tradespeople'),
+      ['Sam Jr', '+15551234567', '__VG_UUID_9f3a1c2d5e6f__'],
+    );
+    const sql = mocks.query.mock.calls[0][0] as string;
+    expect(sql).toContain('set display_name = $1, phone_number = $2');
+    expect(sql).toContain('where id = $3');
+  });
+
+  it('updateTradespersonProfile lowercases the email', async () => {
+    const { updateTradespersonProfile } = await loadAuth();
+    mocks.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: '__VG_UUID_9f3a1c2d5e6f__',
+          email: 'sam@solosam.app',
+          password_hash: 'scrypt$…',
+          display_name: 'Sam',
+          phone_number: null,
+          created_at: new Date('2026-09-18T00:00:00Z'),
+        },
+      ],
+    });
+    await updateTradespersonProfile('__VG_UUID_9f3a1c2d5e6f__', {
+      email: 'sam@solosam.app',
+    });
+    expect(mocks.query).toHaveBeenCalledWith(
+      expect.stringContaining('email = $1'),
+      ['sam@solosam.app', '__VG_UUID_9f3a1c2d5e6f__'],
+    );
+  });
+
+  it('updateTradespersonProfile stores null when clearing phoneNumber', async () => {
+    const { updateTradespersonProfile } = await loadAuth();
+    mocks.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: '__VG_UUID_9f3a1c2d5e6f__',
+          email: 'sam@solosam.app',
+          password_hash: 'scrypt$…',
+          display_name: 'Sam',
+          phone_number: null,
+          created_at: new Date('2026-09-18T00:00:00Z'),
+        },
+      ],
+    });
+    await updateTradespersonProfile('__VG_UUID_9f3a1c2d5e6f__', { phoneNumber: null });
+    expect(mocks.query).toHaveBeenCalledWith(
+      expect.stringContaining('phone_number = $1'),
+      [null, '__VG_UUID_9f3a1c2d5e6f__'],
+    );
+  });
+
+  it('updateTradespersonProfile rejects an empty field set', async () => {
+    const { updateTradespersonProfile } = await loadAuth();
+    await expect(
+      updateTradespersonProfile('__VG_UUID_9f3a1c2d5e6f__', {}),
+    ).rejects.toThrow('no fields provided');
+    expect(mocks.query).not.toHaveBeenCalled();
+  });
+
+  it('updateTradespersonPassword updates only the hash for the id', async () => {
+    const { updateTradespersonPassword } = await loadAuth();
+    mocks.query.mockResolvedValueOnce({ rows: [] });
+    await updateTradespersonPassword('__VG_UUID_9f3a1c2d5e6f__', 'scrypt$…new$hash');
+    expect(mocks.query).toHaveBeenCalledWith(
+      expect.stringContaining('update rl_tradespeople'),
+      ['scrypt$…new$hash', '__VG_UUID_9f3a1c2d5e6f__'],
+    );
+    const sql = mocks.query.mock.calls[0][0] as string;
+    expect(sql).toContain('set password_hash = $1');
+    expect(sql).toContain('where id = $2');
   });
 });

@@ -19,8 +19,8 @@ export function TextField({ label, error, hint, labelAside, ...input }: TextFiel
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-4 mb-2">
-        <label htmlFor={id} className="text-[14px] font-medium">
+      <div className="flex items-baseline justify-between gap-4 mb-1.5">
+        <label htmlFor={id} className="text-[13px] font-medium">
           {label}
         </label>
         {labelAside}
@@ -35,7 +35,7 @@ export function TextField({ label, error, hint, labelAside, ...input }: TextFiel
       {hasMessage && (
         <p
           id={messageId}
-          className="mt-2 text-[13px] leading-snug"
+          className="animate-rise mt-1.5 text-[12.5px] leading-snug"
           style={{ color: error ? "var(--danger)" : "var(--ink-muted)" }}
         >
           {error ?? hint}

@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { Menu } from "lucide-react";
-import { AiSwitch } from "./ai-switch";
-import { ThemeToggle } from "./theme-toggle";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Menu, X } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { useToast } from "@/components/ui/toast";
+import { useScrolled } from "@/lib/hooks";
 import { useSession } from "@/lib/session";
+import { useShell } from "./shell";
 
 const TITLES: Record<string, string> = {
   "/dashboard": "Overview",
@@ -19,7 +21,7 @@ const TITLES: Record<string, string> = {
 };
 
 function initialsOf(name: string | undefined | null): string {
-  if (!name) return "MJ";
+  if (!name) return "U";
   return name
     .split(/\s+/)
     .map((part) => part[0])
@@ -28,45 +30,62 @@ function initialsOf(name: string | undefined | null): string {
     .toUpperCase();
 }
 
-export function TopBar({ onMenu, menuOpen }: { onMenu: () => void; menuOpen: boolean }) {
+export function TopBar() {
   const [aiOn, setAiOn] = useState(true);
   const pathname = usePathname();
-  const { user, loading } = useSession();
+  const { open, toggle } = useShell();
+  const toast = useToast();
+  const scrolled = useScrolled();
+  const { user } = useSession();
   const title = TITLES[pathname] ?? "Dashboard";
 
+  function changeAi(next: boolean) {
+    setAiOn(next);
+    toast.push(next ? "AI front desk is on" : "AI front desk paused", { tone: next ? "success" : "default" });
+  }
+
   return (
-    <header className="flex items-center gap-4 px-5 md:px-8 py-4 border-b border-border bg-surface sticky top-0 z-10">
+    <header className="topbar" data-scrolled={scrolled}>
       <button
+        id="sidebar-toggle"
         type="button"
-        onClick={onMenu}
-        aria-label="Menu"
-        aria-haspopup="dialog"
-        aria-controls="mobile-nav"
-        aria-expanded={menuOpen}
-        className="md:hidden p-2 -ml-2"
+        onClick={toggle}
+        aria-label={open ? "Close menu" : "Open menu"}
+        aria-expanded={open}
+        aria-controls="dashboard-sidebar"
+        className="icon-btn icon-btn-ghost swap-icon md:hidden -ml-1.5"
+        data-on={open}
       >
         <Menu size={19} />
+        <X size={19} />
       </button>
 
-      <h1 className="font-head font-semibold text-lg hidden sm:block">{title}</h1>
+      <h1 key={title} className="title-swap min-w-0 font-head font-semibold text-[17px] truncate">
+        {title}
+      </h1>
 
-      <div className="ml-auto flex items-center gap-2.5 md:gap-4">
-        <div className="hidden sm:flex items-center gap-2.5 pr-3 mr-1 border-r border-border">
-          <span className="text-[13px] font-medium text-ink-muted">
-            {aiOn ? "AI front desk on" : "AI front desk paused"}
+      <div className="ml-auto flex items-center gap-2.5 md:gap-3">
+        <div className="flex items-center gap-2.5 pr-2.5 md:pr-3 mr-0.5 border-r border-border">
+          <span className="flex items-center gap-2 text-[13px] font-medium text-ink-muted">
+            <span
+              className={aiOn ? "pulse-dot" : "w-1.5 h-1.5 rounded-full bg-ink-faint"}
+              style={aiOn ? { color: "var(--success)" } : undefined}
+              aria-hidden="true"
+            />
+            <span className="sm:hidden">AI</span>
+            <span className="hidden sm:inline">{aiOn ? "AI front desk on" : "AI front desk paused"}</span>
           </span>
-          <AiSwitch on={aiOn} onChange={setAiOn} label="Toggle AI front desk" />
+          <Switch on={aiOn} onChange={changeAi} label="AI front desk" />
         </div>
 
         <ThemeToggle />
 
-        {loading ? (
-          <Skeleton className="h-9 w-9 rounded-full" />
-        ) : (
-          <div className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center text-[11px] font-mono text-ink-muted">
-            {initialsOf(user?.displayName)}
-          </div>
-        )}
+        <div
+          className="hidden sm:flex w-9 h-9 rounded-full bg-surface-2 border border-border items-center justify-center text-[11px] font-mono text-ink-muted"
+          aria-hidden="true"
+        >
+          {initialsOf(user?.displayName)}
+        </div>
       </div>
     </header>
   );

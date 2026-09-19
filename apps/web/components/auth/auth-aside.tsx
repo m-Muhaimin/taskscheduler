@@ -1,49 +1,61 @@
-const OVERNIGHT = [
+import { Chip, type ChipTone } from "@/components/ui/chip";
+
+const OVERNIGHT: { time: string; event: string; result: string; chip: string; tone: ChipTone }[] = [
   {
     time: "9:47 PM",
     event: "Missed call, texted back",
     result: "Water heater leak. Booked Wed 8:00 AM with Mike.",
+    chip: "Booked",
     tone: "success",
   },
   {
     time: "11:12 PM",
     event: "Text inquiry",
     result: "AC rattling, not urgent. Booked Thu 2:00 PM.",
+    chip: "Booked",
     tone: "success",
   },
   {
     time: "2:07 AM",
     event: "Text inquiry",
     result: "Water through a ceiling. AI paused and flagged for you.",
+    chip: "Flagged",
     tone: "danger",
   },
-] as const;
+];
 
+const BAR: Record<ChipTone, string> = {
+  success: "var(--success)",
+  danger: "var(--danger)",
+  muted: "var(--border-strong)",
+};
+
+/** Sample log rendered with the same row anatomy as the dashboard AI Inbox (left bar, chip, muted copy). */
 export function AuthAside({ heading }: { heading: string }) {
   return (
     <aside
       aria-label="Example overnight activity"
-      className="hidden lg:flex flex-col justify-center border-l border-border px-10 xl:px-14 py-10"
+      className="hidden lg:flex flex-col justify-center border-l border-border px-10 xl:px-16 py-10"
     >
-      <div className="max-w-[440px]">
-        <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-muted">Sample overnight log</p>
-        <p className="font-head font-semibold text-[28px] leading-[1.1] tracking-[-0.02em] mt-3 mb-8">{heading}</p>
+      <div className="w-full max-w-[420px]">
+        <p className="eyebrow">Sample overnight log</p>
+        <p className="font-head font-semibold text-[22px] xl:text-[24px] leading-[1.15] tracking-[-0.02em] mt-2 mb-5">
+          {heading}
+        </p>
 
-        <ol className="border-t border-border-strong">
-          {OVERNIGHT.map((row) => (
-            <li key={row.time} className="grid grid-cols-[72px_1fr] gap-4 py-4 border-b border-border-strong">
-              <span className="font-mono text-[13px] text-ink-muted pt-1">{row.time}</span>
-              <div>
-                <p className="text-[14px] font-medium">{row.event}</p>
-                <p className="text-[14px] leading-[1.5] mt-1 flex items-start gap-2">
-                  <span
-                    aria-hidden="true"
-                    className="mt-2 w-2 h-2 rounded-full shrink-0"
-                    style={{ background: row.tone === "danger" ? "var(--danger)" : "var(--success)" }}
-                  />
-                  <span>{row.result}</span>
-                </p>
+        <ol className="card overflow-hidden divided">
+          {OVERNIGHT.map((row, i) => (
+            <li
+              key={row.time}
+              className="metric-card-rise px-4 py-3"
+              style={{ borderLeft: `2.5px solid ${BAR[row.tone]}`, animationDelay: `${250 + i * 120}ms` }}
+            >
+              <div className="flex items-center gap-2">
+                <p className="text-[13.5px] font-medium">{row.event}</p>
+                <Chip tone={row.tone}>{row.chip}</Chip>
+                <span className="font-mono text-[11px] text-ink-faint ml-auto">{row.time}</span>
               </div>
+              <p className="text-[12.5px] leading-[1.5] text-ink-muted mt-1">{row.result}</p>
             </li>
           ))}
         </ol>

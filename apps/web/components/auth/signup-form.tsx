@@ -15,15 +15,16 @@ import { PasswordField } from "./password-field";
 import { SubmitButton } from "./submit-button";
 import { FormAlert } from "./form-alert";
 
-type FieldName = "name" | "email" | "password";
+type FieldName = "name" | "business" | "email" | "password";
 type Errors = Partial<Record<FieldName, string>>;
 
-const FIELD_ORDER: FieldName[] = ["name", "email", "password"];
+const FIELD_ORDER: FieldName[] = ["name", "business", "email", "password"];
 
 export function SignupForm() {
   const router = useRouter();
   const [values, setValues] = useState<Record<FieldName, string>>({
     name: "",
+    business: "",
     email: "",
     password: "",
   });
@@ -50,6 +51,7 @@ export function SignupForm() {
 
     const next: Errors = {
       name: validateRequired(values.name, "Enter your name."),
+      business: validateRequired(values.business, "Enter your business name."),
       email: validateEmail(values.email),
       password: validatePassword(values.password, "signup"),
     };
@@ -68,7 +70,7 @@ export function SignupForm() {
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof AuthError && err.field) {
-        setErrors({ email: err.message });
+        setErrors(err.field === "email" ? { email: err.message } : { password: err.message });
         focusField(err.field);
       } else {
         setFormError(err instanceof AuthError ? err.message : "Something went wrong on our end. Try again in a moment.");
@@ -78,23 +80,35 @@ export function SignupForm() {
   }
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
+    <form ref={formRef} onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {formError && <FormAlert message={formError} />}
-      <TextField
-        label="Your name"
-        name="name"
-        autoComplete="name"
-        value={values.name}
-        onChange={set("name")}
-        error={errors.name}
-        disabled={loading}
-      />
+      <div className="grid sm:grid-cols-2 gap-4">
+        <TextField
+          label="Your name"
+          name="name"
+          autoComplete="name"
+          value={values.name}
+          onChange={set("name")}
+          error={errors.name}
+          disabled={loading}
+        />
+        <TextField
+          label="Business name"
+          name="business"
+          autoComplete="organization"
+          value={values.business}
+          onChange={set("business")}
+          error={errors.business}
+          disabled={loading}
+        />
+      </div>
       <TextField
         label="Work email"
         name="email"
         type="email"
         autoComplete="email"
         inputMode="email"
+        placeholder="you@yourshop.com"
         value={values.email}
         onChange={set("email")}
         error={errors.email}

@@ -16,10 +16,10 @@ export function FormAlert({ message }: { message: string }) {
       ref={ref}
       role="alert"
       tabIndex={-1}
-      className="flex items-start gap-3 p-3 rounded-[10px] border border-border text-[14px] leading-snug"
+      className="animate-rise flex items-start gap-2.5 p-3 rounded-[10px] border border-border text-[13px] leading-snug"
       style={{ background: "var(--danger-bg)", color: "var(--danger)" }}
     >
-      <AlertTriangle size={16} className="shrink-0 mt-1" />
+      <AlertTriangle size={15} className="shrink-0 mt-0.5" aria-hidden="true" />
       <p>{message}</p>
     </div>
   );

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ThemeToggle } from "@/components/dashboard/theme-toggle";
-import { Card } from "@/components/ui/card";
+import { Logo } from "@/components/ui/logo";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { AuthAside } from "./auth-aside";
 
 interface AuthShellProps {
@@ -14,26 +14,25 @@ interface AuthShellProps {
 
 export function AuthShell({ title, subtitle, asideHeading, children, footer }: AuthShellProps) {
   return (
-    <div className="min-h-screen grid lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
-      <div className="bg-surface flex flex-col px-6 md:px-12 py-6">
-        <header className="h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 rounded-[10px]" aria-label="Ridgeline home">
-            <span className="w-8 h-8 rounded-[10px] bg-accent-deep text-accent-ink flex items-center justify-center font-head font-bold text-sm">
-              R
-            </span>
-            <span className="font-head font-semibold text-[16px]">Ridgeline</span>
-          </Link>
-          <ThemeToggle large />
+    <div className="min-h-dvh grid lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+      <div className="bg-surface flex flex-col px-5 md:px-10 py-4">
+        <header className="flex items-center justify-between">
+          <Logo />
+          <ThemeToggle />
         </header>
 
-        <main className="flex-1 flex flex-col justify-center w-full max-w-[400px] mx-auto py-10">
-          <Card className="p-6 md:p-8">
-            <h1 className="font-head font-semibold text-[28px] leading-[1.1] tracking-[-0.02em]">{title}</h1>
-            <p className="text-ink-muted text-[16px] leading-[1.55] mt-3 mb-8">{subtitle}</p>
-            {children}
-            <div className="mt-8 pt-6 border-t border-border text-[14px] text-ink-muted">{footer}</div>
-          </Card>
+        <main id="main" className="animate-rise flex-1 flex flex-col justify-center w-full max-w-[360px] mx-auto py-8">
+          <h1 className="h-page">{title}</h1>
+          <p className="text-ink-muted text-[14px] leading-[1.55] mt-2 mb-6">{subtitle}</p>
+          {children}
+          <div className="mt-6 pt-4 border-t border-border text-[13px] text-ink-muted">{footer}</div>
         </main>
+
+        <p className="text-center font-mono text-[11px] text-ink-faint">
+          <Link href="/" className="hover:text-ink transition-colors">
+            &larr; Back to home
+          </Link>
+        </p>
       </div>
 
       <AuthAside heading={asideHeading} />

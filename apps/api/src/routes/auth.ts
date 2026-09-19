@@ -27,6 +27,8 @@ import {
   findTradespersonById,
   hashPassword,
   toAuthUser,
+  updateTradespersonPassword,
+  updateTradespersonProfile,
   verifyPassword,
 } from '../services/auth-service.js';
 import { JWT_ISSUER, jwtSecret, requireAuth } from '../middleware/auth.js';
@@ -51,6 +53,26 @@ const registerBody = z.object({
 const loginBody = z.object({
   email: emailSchema,
   password: z.string().min(1).max(200),
+});
+
+// PATCH /api/auth/profile — partial profile update; at least one field required.
+// phoneNumber: E.164-ish (matches the rl_tradespeople phone_number check);
+// null or '' clears the stored value.
+const phoneNumberSchema = z
+  .union([z.string().trim().regex(/^\+?[1-9][0-9]{1,14}$/), z.literal(''), z.null()])
+  .transform((v) => (v === '' ? null : v));
+
+const profilePatchBody = z.object({
+  displayName: z.string().trim().min(1).max(80).optional(),
+  email: emailSchema.optional(),
+  phoneNumber: phoneNumberSchema.optional(),
+});
+
+const changePasswordBody = z.object({
+  currentPassword: z.string().min(1).max(200),
+  // MIN_PASSWORD_LENGTH in the web (apps/web/lib/validation.ts) is 8; the UI
+  // validates first, the server enforces the same bound.
+  newPassword: z.string().min(8).max(200),
 });
 
 // ── token signing ──────────────────────────────────────────────────────────
@@ -161,5 +183,66 @@ authRouter.get(
       return;
     }
     res.status(200).json({ user: toAuthUser(row) });
+  }),
+);
+
+authRouter.patch(
+  '/profile',
+  requireAuth,
+  guarded(async (req, res) => {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'invalid_token' });
+      return;
+    }
+    const parsed = profilePatchBody.safeParse(req.body);
+    const fields = parsed.success ? parsed.data : {};
+    if (!parsed.success || Object.keys(fields).length === 0) {
+      res.status(400).json({ error: 'invalid_body' });
+      return;
+    }
+    // Email uniqueness: 409 when ANOTHER tradesperson holds it; a no-op
+    // update against the caller's own email succeeds.
+    if (fields.email !== undefined && fields.email !== null) {
+      const holder = await findTradespersonByEmail(fields.email);
+      if (holder && holder.id !== userId) {
+        res.status(409).json({ error: 'email_taken' });
+        return;
+      }
+    }
+    const row = await updateTradespersonProfile(userId, fields);
+    res.status(200).json({ user: toAuthUser(row) });
+  }),
+);
+
+authRouter.post(
+  '/change-password',
+  requireAuth,
+  guarded(async (req, res) => {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'invalid_token' });
+      return;
+    }
+    const parsed = changePasswordBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_body' });
+      return;
+    }
+    const { currentPassword, newPassword } = parsed.data;
+    const row = await findTradespersonById(userId);
+    if (!row) {
+      res.status(404).json({ error: 'invalid_token' }); // token for deleted account
+      return;
+    }
+    // Same verify as login — constant-time, same error body (no oracle).
+    const ok = await verifyPassword(currentPassword, row.password_hash);
+    if (!ok) {
+      res.status(401).json({ error: 'invalid_credentials' });
+      return;
+    }
+    const passwordHash = await hashPassword(newPassword);
+    await updateTradespersonPassword(userId, passwordHash);
+    res.status(200).json({ ok: true });
   }),
 );

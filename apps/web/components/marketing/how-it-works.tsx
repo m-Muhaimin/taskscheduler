@@ -1,4 +1,4 @@
-import { Eyebrow } from "@/components/ui/eyebrow";
+import { SectionHeading } from "./section-heading";
 
 const STEPS = [
   {
@@ -20,28 +20,21 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section id="how" className="max-w-[1200px] mx-auto px-6 md:px-12 py-16 md:py-20" aria-labelledby="how-heading">
-      <div className="grid lg:grid-cols-12 gap-12 lg:gap-8">
+    <section id="how" className="container-x section" aria-labelledby="how-heading">
+      <div className="grid lg:grid-cols-12 gap-6 lg:gap-10">
         <div className="lg:col-span-4 lg:sticky lg:top-24 lg:self-start">
-          <Eyebrow className="mb-4">How it works</Eyebrow>
-          <h2
-            id="how-heading"
-            className="font-head font-semibold text-[clamp(1.875rem,3.6vw,2.75rem)] leading-[1.08] tracking-[-0.02em]"
-          >
-            From missed call to booked job.
-          </h2>
+          <SectionHeading id="how-heading" eyebrow="How it works" title="From missed call to booked job." />
         </div>
 
-        <ol className="lg:col-span-7 lg:col-start-6 border-b border-border-strong">
+        <ol className="lg:col-span-7 lg:col-start-6 card divided overflow-hidden">
           {STEPS.map((s) => (
-            <li
-              key={s.n}
-              className="reveal grid sm:grid-cols-[64px_1fr] gap-4 py-8 border-t border-border-strong"
-            >
-              <span className="font-mono text-[14px] text-ink-muted pt-1">{s.n}</span>
+            <li key={s.n} className="reveal flex gap-4 p-4 md:p-5">
+              <span className="w-7 h-7 shrink-0 rounded-full bg-surface-2 border border-border flex items-center justify-center font-mono text-[11px] text-ink-muted">
+                {s.n}
+              </span>
               <div>
-                <h3 className="font-head font-semibold text-[24px] leading-[1.15] tracking-[-0.01em]">{s.title}</h3>
-                <p className="text-[17px] leading-[1.6] text-ink-muted mt-3 max-w-[56ch]">{s.body}</p>
+                <h3 className="font-head font-semibold text-[17px] leading-[1.25] tracking-[-0.01em]">{s.title}</h3>
+                <p className="text-[14px] leading-[1.6] text-ink-muted mt-1.5 max-w-[56ch]">{s.body}</p>
               </div>
             </li>
           ))}

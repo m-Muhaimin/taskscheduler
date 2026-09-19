@@ -1,5 +1,5 @@
 import type { StatItem } from "@/lib/types";
-import { CountUp } from "./count-up";
+import { CountUp } from "@/components/ui/count-up";
 
 const TONE_COLOR: Record<NonNullable<StatItem["tone"]>, string> = {
   default: "var(--ink)",

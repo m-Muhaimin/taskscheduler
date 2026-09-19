@@ -16,6 +16,7 @@ const config: Config = {
         "border-strong": "var(--border-strong)",
         accent: "var(--accent)",
         "accent-deep": "var(--accent-deep)",
+        "accent-hover": "var(--accent-hover)",
         field: "var(--field-border)",
         band: "var(--band-bg)",
         "band-ink": "var(--band-ink)",
@@ -35,6 +36,9 @@ const config: Config = {
       },
       borderRadius: {
         DEFAULT: "10px",
+      },
+      boxShadow: {
+        card: "var(--shadow)",
       },
     },
   },

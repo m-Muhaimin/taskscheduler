@@ -106,10 +106,17 @@ export async function signIn(input: { email: string; password: string }): Promis
   return { name: user.displayName, email: user.email };
 }
 
+/**
+ * Signup adapter (T4): the signup form collects a business name, but the
+ * register API does not take one — `business` is accepted here and dropped
+ * before the payload is built, so the field stays in the UI without ever
+ * reaching POST /api/auth/register.
+ */
 export async function signUp(input: {
   name: string;
   email: string;
   password: string;
+  business?: string;
 }): Promise<Session> {
   const res = await fetch("/api/auth/register", {
     method: "POST",

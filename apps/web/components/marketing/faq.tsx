@@ -1,5 +1,5 @@
-import { Plus } from "lucide-react";
-import { Eyebrow } from "@/components/ui/eyebrow";
+import { FaqList } from "./faq-list";
+import { SectionHeading } from "./section-heading";
 
 const QUESTIONS = [
   {
@@ -26,28 +26,13 @@ const QUESTIONS = [
 
 export function Faq() {
   return (
-    <section id="faq" className="max-w-[1200px] mx-auto px-6 md:px-12 pb-16 md:pb-20" aria-labelledby="faq-heading">
-      <div className="grid lg:grid-cols-12 gap-12 lg:gap-8 border-t border-border-strong pt-16 md:pt-20">
+    <section id="faq" className="container-x pb-12 md:pb-16" aria-labelledby="faq-heading">
+      <div className="grid lg:grid-cols-12 gap-6 lg:gap-10 border-t border-border-strong pt-12 md:pt-16">
         <div className="lg:col-span-4">
-          <Eyebrow className="mb-4">Questions</Eyebrow>
-          <h2
-            id="faq-heading"
-            className="font-head font-semibold text-[clamp(1.875rem,3.6vw,2.75rem)] leading-[1.08] tracking-[-0.02em]"
-          >
-            What owners ask first.
-          </h2>
+          <SectionHeading id="faq-heading" eyebrow="Questions" title="What owners ask first." />
         </div>
-
-        <div className="lg:col-span-7 lg:col-start-6 border-b border-border-strong">
-          {QUESTIONS.map((item) => (
-            <details key={item.q} className="faq border-t border-border-strong">
-              <summary className="flex items-center justify-between gap-6 py-6 min-h-[44px] cursor-pointer rounded-[10px]">
-                <span className="text-[18px] font-medium leading-snug">{item.q}</span>
-                <Plus size={20} className="faq-plus shrink-0 text-ink-muted" aria-hidden="true" />
-              </summary>
-              <p className="text-[17px] leading-[1.6] text-ink-muted pb-6 max-w-[56ch]">{item.a}</p>
-            </details>
-          ))}
+        <div className="lg:col-span-7 lg:col-start-6">
+          <FaqList items={QUESTIONS} />
         </div>
       </div>
     </section>

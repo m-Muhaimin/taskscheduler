@@ -1,40 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, X } from "lucide-react";
 
 export function EscalationBanner() {
-  const [visible, setVisible] = useState(true);
-  if (!visible) return null;
+  const [dismissed, setDismissed] = useState(false);
+  const [gone, setGone] = useState(false);
+  const timer = useRef<number>();
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  function dismiss() {
+    setDismissed(true);
+    // unmount once the collapse animation has finished
+    timer.current = window.setTimeout(() => setGone(true), 320);
+  }
+
+  if (gone) return null;
 
   return (
-    <div
-      className="flex items-center gap-3 px-5 md:px-8 py-2.5 border-b border-border"
-      style={{ background: "var(--danger-bg)" }}
-    >
-      <span className="flex items-center gap-2 shrink-0">
-        <span className="pulse-dot" data-tone="danger" aria-hidden="true" />
-        <AlertTriangle size={15} className="shrink-0" style={{ color: "var(--danger)" }} />
-      </span>
-      <p className="text-[13px]" style={{ color: "var(--danger)" }}>
-        <span className="font-semibold">Possible emergency{"\u2014"}</span> John Whitfield mentioned
-        water coming through a ceiling. AI paused the conversation automatically.
-      </p>
-      <Link
-        href="/dashboard/inbox"
-        className="ml-auto shrink-0 text-[13px] font-medium px-3 py-1.5 rounded-[8px] text-white"
-        style={{ background: "var(--danger)" }}
-      >
-        Take over
-      </Link>
-      <button
-        aria-label="Dismiss"
-        onClick={() => setVisible(false)}
-        className="w-6 h-6 flex items-center justify-center text-ink-faint hover:text-ink shrink-0"
-      >
-        <X size={13} />
-      </button>
+    <div className="expandable" data-collapsed={dismissed} data-fade="true">
+      <div className="expandable-inner">
+        <div
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 md:px-8 py-2.5 border-b border-border"
+          style={{ background: "var(--danger-bg)" }}
+          role="alert"
+        >
+          <AlertTriangle size={15} className="shrink-0" style={{ color: "var(--danger)" }} aria-hidden="true" />
+          <p className="flex-1 min-w-[180px] text-[13px] leading-snug" style={{ color: "var(--danger)" }}>
+            <span className="font-semibold">Possible emergency{"\u2014"}</span> John Whitfield mentioned water
+            coming through a ceiling. AI paused the conversation automatically.
+          </p>
+          <Link href="/dashboard/inbox" className="btn btn-danger btn-sm shrink-0 order-3 w-full sm:order-none sm:w-auto">
+            Take over
+          </Link>
+          <button
+            type="button"
+            aria-label="Dismiss alert"
+            onClick={dismiss}
+            className="order-2 sm:order-none w-7 h-7 rounded-[8px] flex items-center justify-center shrink-0 transition-colors hover:bg-black/5"
+            style={{ color: "var(--danger)" }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

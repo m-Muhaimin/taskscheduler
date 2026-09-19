@@ -1,21 +1,20 @@
 import Link from "next/link";
-import { Eyebrow } from "@/components/ui/eyebrow";
 import { HeroThread } from "./hero-thread";
 
 export function Hero() {
   return (
-    <section className="max-w-[1200px] mx-auto px-6 md:px-12 pt-16 md:pt-20 pb-16 md:pb-20">
-      <div className="grid lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+    <section className="container-x pt-10 pb-12 md:pt-14 md:pb-16" aria-labelledby="hero-heading">
+      <div className="grid lg:grid-cols-12 gap-8 lg:gap-12 items-center">
         <div className="lg:col-span-7">
-          <Eyebrow className="mb-6">AI front desk for plumbing and HVAC shops</Eyebrow>
-          <h1 className="font-head font-semibold text-[clamp(2.5rem,6.2vw,4.75rem)] leading-[1.02] tracking-[-0.035em]">
+          <p className="eyebrow mb-4">AI front desk for plumbing and HVAC shops</p>
+          <h1 id="hero-heading" className="h-display">
             You&rsquo;re under a sink. The AI is booking your next job.
           </h1>
-          <p className="text-[17px] leading-[1.6] text-ink-muted max-w-[52ch] mt-8">
+          <p className="lede mt-5">
             Ridgeline texts back every missed call, asks what&rsquo;s wrong, and puts a real appointment on your
             schedule. Emergencies and pricing questions come straight to you.
           </p>
-          <div className="flex flex-wrap items-center gap-4 mt-8">
+          <div className="flex flex-wrap items-center gap-3 mt-6">
             <Link href="/signup" className="btn btn-primary">
               Create your account
             </Link>
@@ -27,7 +26,7 @@ export function Hero() {
 
         <div className="lg:col-span-5">
           <HeroThread />
-          <p className="font-mono text-[12px] text-ink-muted mt-4" aria-hidden="true">
+          <p className="font-mono text-[11.5px] text-ink-muted mt-3" aria-hidden="true">
             Sample conversation
           </p>
         </div>

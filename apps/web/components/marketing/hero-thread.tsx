@@ -1,4 +1,7 @@
-import { CalendarCheck } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { CalendarCheck, RotateCcw } from "lucide-react";
 
 const MESSAGES = [
   {
@@ -20,46 +23,58 @@ const MESSAGES = [
 ] as const;
 
 export function HeroThread() {
+  // Bumping the key remounts the list, which replays the CSS entrance sequence.
+  const [run, setRun] = useState(0);
+
   return (
-    <figure
-      aria-labelledby="hero-thread-caption"
-      className="border border-border-strong rounded-[10px] bg-surface"
-      style={{ boxShadow: "var(--shadow)" }}
-    >
-      <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-border">
-        <span className="font-mono text-[13px]">(206) 555-0142</span>
-        <span className="font-mono text-[12px] text-ink-muted">Missed call, 9:47 PM</span>
+    <figure aria-labelledby="hero-thread-caption" className="card" style={{ boxShadow: "var(--shadow)" }}>
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border">
+        <span className="font-mono text-[12.5px]">(206) 555-0142</span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[11.5px] text-ink-muted">Missed call, 9:47 PM</span>
+          <button
+            type="button"
+            onClick={() => setRun((n) => n + 1)}
+            aria-label="Replay conversation"
+            title="Replay"
+            className="icon-btn icon-btn-ghost w-7 h-7 rounded-[7px]"
+          >
+            <RotateCcw size={13} />
+          </button>
+        </div>
       </div>
 
-      <ol className="flex flex-col gap-4 p-4 md:p-6">
-        {MESSAGES.map((m, i) => (
-          <li
-            key={i}
-            className={`thread-msg flex flex-col gap-1 ${m.from === "ai" ? "items-start" : "items-end"}`}
-            style={{ "--i": i } as React.CSSProperties}
-          >
-            <p
-              className={`max-w-[88%] px-4 py-3 rounded-[10px] text-[15px] leading-[1.5] border ${
-                m.from === "ai" ? "bg-bg border-border" : "bg-surface-2 border-border-strong"
-              }`}
+      <div key={run}>
+        <ol className="flex flex-col gap-3 p-4">
+          {MESSAGES.map((m, i) => (
+            <li
+              key={i}
+              className={`thread-msg flex flex-col gap-1 ${m.from === "ai" ? "items-start" : "items-end"}`}
+              style={{ "--i": i } as React.CSSProperties}
             >
-              {m.text}
-            </p>
-            <span className="font-mono text-[11px] text-ink-muted">
-              {m.from === "ai" ? "Ridgeline AI" : "Customer"} · {m.time}
-            </span>
-          </li>
-        ))}
-      </ol>
+              <p
+                className={`max-w-[88%] px-3 py-2 rounded-[10px] text-[13.5px] leading-[1.5] border ${
+                  m.from === "ai" ? "bg-bg border-border" : "bg-surface-2 border-border-strong"
+                }`}
+              >
+                {m.text}
+              </p>
+              <span className="font-mono text-[10.5px] text-ink-muted">
+                {m.from === "ai" ? "Ridgeline AI" : "Customer"} · {m.time}
+              </span>
+            </li>
+          ))}
+        </ol>
 
-      <div
-        className="thread-msg flex items-start gap-3 px-4 md:px-6 py-4 border-t border-border rounded-b-[10px]"
-        style={{ "--i": MESSAGES.length, background: "var(--success-bg)" } as React.CSSProperties}
-      >
-        <CalendarCheck size={18} className="shrink-0 mt-1" style={{ color: "var(--success)" }} aria-hidden="true" />
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink">Booked</p>
-          <p className="text-[15px] font-medium mt-1">Water heater repair, Wed 8:00 AM, Mike R.</p>
+        <div
+          className="thread-msg flex items-start gap-3 px-4 py-3 border-t border-border rounded-b-[10px]"
+          style={{ "--i": MESSAGES.length, background: "var(--success-bg)" } as React.CSSProperties}
+        >
+          <CalendarCheck size={16} className="shrink-0 mt-0.5" style={{ color: "var(--success)" }} aria-hidden="true" />
+          <div>
+            <p className="chip !p-0 !bg-transparent" style={{ color: "var(--success)" }}>Booked</p>
+            <p className="text-[13.5px] font-medium mt-0.5">Water heater repair, Wed 8:00 AM, Mike R.</p>
+          </div>
         </div>
       </div>
 

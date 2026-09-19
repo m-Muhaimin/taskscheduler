@@ -23,8 +23,8 @@ export function PasswordField({ label, error, hint, labelAside, ...input }: Pass
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-4 mb-2">
-        <label htmlFor={id} className="text-[14px] font-medium">
+      <div className="flex items-baseline justify-between gap-4 mb-1.5">
+        <label htmlFor={id} className="text-[13px] font-medium">
           {label}
         </label>
         {labelAside}
@@ -34,7 +34,7 @@ export function PasswordField({ label, error, hint, labelAside, ...input }: Pass
           {...input}
           id={id}
           type={visible ? "text" : "password"}
-          className="field pr-12"
+          className="field pr-10"
           aria-invalid={error ? true : undefined}
           aria-describedby={hasMessage ? messageId : undefined}
         />
@@ -43,7 +43,7 @@ export function PasswordField({ label, error, hint, labelAside, ...input }: Pass
           onClick={() => setVisible((v) => !v)}
           aria-pressed={visible}
           aria-label={visible ? "Hide password" : "Show password"}
-          className="absolute right-0 top-0 h-11 w-11 flex items-center justify-center rounded-[10px] text-ink-muted hover:text-ink transition-colors"
+          className="absolute right-0 top-0 h-full w-10 flex items-center justify-center rounded-[10px] text-ink-muted hover:text-ink transition-colors"
         >
           {visible ? <EyeOff size={17} /> : <Eye size={17} />}
         </button>
@@ -51,7 +51,7 @@ export function PasswordField({ label, error, hint, labelAside, ...input }: Pass
       {hasMessage && (
         <p
           id={messageId}
-          className="mt-2 text-[13px] leading-snug"
+          className="animate-rise mt-1.5 text-[12.5px] leading-snug"
           style={{ color: error ? "var(--danger)" : "var(--ink-muted)" }}
         >
           {error ?? hint}

@@ -57,7 +57,7 @@ export function LoginForm() {
   }
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
+    <form ref={formRef} onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {formError && <FormAlert message={formError} />}
       <TextField
         label="Email"
@@ -86,7 +86,7 @@ export function LoginForm() {
         error={errors.password}
         disabled={loading}
         labelAside={
-          <Link href="/forgot-password" className="link text-[13px]">
+          <Link href="/forgot-password" className="link text-[12.5px]">
             Forgot password?
           </Link>
         }

@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { InboxItem, InboxState } from "@/lib/types";
+import { CheckCircle2 } from "lucide-react";
+import type { InboxItem } from "@/lib/types";
+import { FilterChips, type ChipOption } from "@/components/ui/filter-chips";
 import { InboxRow } from "./inbox-row";
 
 type Filter = "all" | "attention" | "handled";
@@ -17,52 +19,50 @@ export function AiInboxList({ items: initialItems, compact, showFilters, onCount
   const [items, setItems] = useState(initialItems);
   const [filter, setFilter] = useState<Filter>("all");
 
-  function handleResolve(id: number) {
+  function handleResolve(id: string) {
     setItems((prev) => {
       const next = prev.filter((i) => i.id !== id);
-      const attentionCount = next.filter((i) => i.state === "attention").length;
-      onCountChange?.(attentionCount);
+      onCountChange?.(next.filter((i) => i.state === "attention").length);
       return next;
     });
   }
 
+  const options: ChipOption<Filter>[] = useMemo(
+    () => [
+      { value: "all", label: "All", count: items.length },
+      { value: "attention", label: "Needs attention", count: items.filter((i) => i.state === "attention").length },
+      { value: "handled", label: "Handled", count: items.filter((i) => i.state === "handled").length },
+    ],
+    [items]
+  );
+
   const visible = useMemo(() => {
     const base = compact ? items.slice(0, 4) : items;
     if (filter === "all") return base;
-    if (filter === "attention") return base.filter((i) => i.state === "attention");
-    return base.filter((i) => i.state === "handled");
+    return base.filter((i) => i.state === filter);
   }, [items, filter, compact]);
 
   return (
     <div>
       {showFilters && (
-        <div className="flex gap-1.5 text-[12px] mb-3">
-          {(["all", "attention", "handled"] as Filter[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`text-[12.5px] font-medium px-3 py-1.5 rounded-[8px] border transition-colors ${
-                filter === f
-                  ? "bg-accent text-accent-ink border-transparent"
-                  : "border-border-strong hover:bg-surface-2"
-              }`}
-            >
-              {f === "all" ? "All" : f === "attention" ? "Needs attention" : "Handled"}
-            </button>
+        <div className="mb-3">
+          <FilterChips options={options} value={filter} onChange={setFilter} label="Filter conversations" />
+        </div>
+      )}
+
+      {visible.length > 0 && (
+        <div className="card overflow-hidden divided">
+          {visible.map((item, i) => (
+            <InboxRow key={item.id} item={item} compact={compact} index={i} onResolve={handleResolve} />
           ))}
         </div>
       )}
 
-      <div className="border border-border rounded-[10px] bg-surface overflow-hidden [&>*+*]:border-t [&>*+*]:border-border">
-        {visible.map((item: InboxItem, i: number) => (
-          <InboxRow key={item.id} item={item} compact={compact} index={i} onResolve={handleResolve} />
-        ))}
-      </div>
-
       {visible.length === 0 && (
-        <p className="text-center text-sm text-ink-muted py-10 border border-border rounded-[10px] mt-4">
-          Nothing here right now {"\u2014"} the AI is quietly running your front desk.
-        </p>
+        <div className="fade-in flex flex-col items-center gap-2 text-center text-[13px] text-ink-muted py-10 px-4 card">
+          <CheckCircle2 size={20} style={{ color: "var(--success)" }} aria-hidden="true" />
+          <p>Nothing here right now {"\u2014"} the AI is quietly running your front desk.</p>
+        </div>
       )}
     </div>
   );

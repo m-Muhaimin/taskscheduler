@@ -48,15 +48,15 @@ export function ForgotPasswordForm() {
 
   if (sentTo) {
     return (
-      <div className="flex flex-col gap-6">
-        <div className="flex items-start gap-3 p-4 rounded-[10px] border border-border-strong bg-bg">
+      <div className="animate-rise flex flex-col gap-4">
+        <div className="card flex items-start gap-3 p-4" style={{ background: "var(--bg)" }}>
           <MailCheck size={20} className="shrink-0 mt-1" style={{ color: "var(--success)" }} aria-hidden="true" />
           <div>
-            <h2 ref={headingRef} tabIndex={-1} className="font-head font-semibold text-[18px] leading-tight">
+            <h2 ref={headingRef} tabIndex={-1} className="font-head font-semibold text-[16px] leading-tight">
               Check your email
             </h2>
-            <p className="text-[14px] leading-[1.55] mt-2">
-              If an account exists for <span className="font-medium break-all">{sentTo}</span>, a reset link is on its
+            <p className="text-[13px] leading-[1.55] text-ink-muted mt-1.5">
+              If an account exists for <span className="font-medium text-ink break-all">{sentTo}</span>, a reset link is on its
               way. It can take a minute to arrive.
             </p>
           </div>
@@ -79,7 +79,7 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form ref={inputWrapRef} onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
+    <form ref={inputWrapRef} onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {formError && <FormAlert message={formError} />}
       <TextField
         label="Email"

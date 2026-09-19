@@ -1,7 +1,7 @@
 export type InboxState = "attention" | "active" | "handled";
 
 export interface InboxItem {
-  id: number;
+  id: string;
   name: string;
   state: InboxState;
   lastMessage: string;
@@ -11,7 +11,7 @@ export interface InboxItem {
 }
 
 export interface Appointment {
-  id: number;
+  id: string;
   time: string;
   label: string;
   tech: string;
@@ -20,7 +20,7 @@ export interface Appointment {
 }
 
 export interface JobRow {
-  id: number;
+  id: string;
   customer: string;
   service: string;
   technician: string;
@@ -29,7 +29,7 @@ export interface JobRow {
 }
 
 export interface Customer {
-  id: number;
+  id: string;
   name: string;
   phone: string;
   jobCount: number;

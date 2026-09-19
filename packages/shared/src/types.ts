@@ -232,11 +232,15 @@ export type RescheduleHistoryResponse = {
 // the `ts_session` cookie. Auth endpoints live under /api/auth.
 
 /** Tradesperson identity returned after login/register; lean vs the full
- *  `User` profile (phone, calendar, hours, sms settings) from fixtures. */
+ *  `User` profile (phone, calendar, hours, sms settings) from fixtures.
+ *  phoneNumber is carried by the rl_tradespeople row (nullable column). */
 export type AuthUser = {
   id: string; // UUID of the tradesperson row
   email: string;
   displayName: string;
+  /** E.164-ish phone (e.g. "+15551234567"), null when unset. Added with
+   *  PATCH /api/auth/profile (T7); /me and login/register return it too. */
+  phoneNumber: string | null;
 };
 
 export type LoginRequest = {
@@ -311,4 +315,140 @@ export type GoogleOAuthError =
 
 export type GoogleOAuthErrorResponse = {
   error: GoogleOAuthError;
+};
+
+// ── Dashboard DTO v2 (web replacement — T1) ────────────────────────────────
+// Contract for the new dashboard UI. Display-ready: the server formats
+// time strings, percents, currency, and trend deltas. Ids are uuid strings.
+
+export type MetricTrendDto = {
+  deltaLabel: string; // e.g. "+18% vs last week"
+  direction: 'up' | 'down' | 'flat';
+  good: boolean;      // whether this direction is good for this metric
+};
+
+export type MetricCardDto = {
+  id: string;
+  label: string;
+  value: number;
+  prefix?: string;    // e.g. "$"
+  suffix?: string;    // e.g. "%" or "/wk"
+  tone?: 'default' | 'success' | 'danger';
+  trend?: MetricTrendDto;
+  chartData: number[]; // 7-day daily series, oldest -> newest
+  href?: string;       // card link target, e.g. "/dashboard/inbox"
+};
+
+export type InboxItemState = 'attention' | 'active' | 'handled';
+export type InboxChannel = 'SMS' | 'Voice' | 'Web';
+
+export type InboxItemDto = {
+  id: string;
+  name: string;          // customer name, fallback phone
+  state: InboxItemState;
+  lastMessage: string;
+  suggestion: string;    // AI suggestion / latest outbound AI message
+  time: string;          // relative display, e.g. "2m ago", "3h ago", "Yesterday"
+  channel: InboxChannel;
+};
+
+export type AppointmentDto = {
+  id: string;
+  time: string;        // org-tz "9:00" (24h -> 12h display as fixtures show)
+  label: string;       // service or "9:00 appointment with <name>"
+  tech: string;        // technician display name
+  topPercent: number;  // 0-100 vertical position on the day timeline
+  urgent?: boolean;    // true when escalated/needs attention
+};
+
+export type RevenueRecoveryDto = {
+  missedCalls: number;
+  recovered: number;
+  booked: number;
+  estimatedRevenue: number; // currency number; UI prefixes "~$"
+  sparkline: number[];      // 30-day recovered series, oldest -> newest
+};
+
+export type DashboardSummaryResponse = {
+  metrics: MetricCardDto[];      // 5 cards
+  inbox: InboxItemDto[];         // compact, top 4
+  today: AppointmentDto[];       // today timeline
+  revenueRecovery: RevenueRecoveryDto;
+};
+
+export type DashboardInboxResponse = {
+  items: InboxItemDto[];
+};
+
+export type ScheduleItemDto = {
+  id: string;
+  time: string;      // org-tz "9:00" or "9:30"
+  customerName: string;
+};
+
+export type ScheduleDayDto = {
+  date: string;      // ISO date yyyy-mm-dd (org tz)
+  items: ScheduleItemDto[]; // sorted by start time
+};
+
+export type DashboardScheduleResponse = {
+  weekStart: string; // ISO date
+  weekEnd: string;   // ISO date (exclusive)
+  days: ScheduleDayDto[]; // Monday..Sunday, 7 entries
+};
+
+export type JobStatusType = 'Completed' | 'Scheduled' | 'In progress' | 'Needs dispatch';
+
+export type JobRowDto = {
+  id: string;
+  customer: string;
+  service: string;
+  technician: string;
+  status: JobStatusType;
+  value: string; // formatted "$1,200" or "—" when no deposit
+};
+
+export type DashboardJobsResponse = {
+  jobs: JobRowDto[];
+};
+
+export type CustomerDto = {
+  id: string;
+  name: string;     // fallback "Unknown" when null
+  phone: string;
+  jobCount: number;
+  customerSince: string; // e.g. "2026" (created year)
+};
+
+export type DashboardCustomersResponse = {
+  customers: CustomerDto[];
+};
+
+export type OutcomeDto = {
+  label: string;    // e.g. "Booked", "Escalated", "Dropped"
+  pct: number;      // 0-100
+  tone: 'success' | 'danger' | 'muted';
+};
+
+export type SeriesPointDto = {
+  date: string; // ISO date yyyy-mm-dd
+  value: number;
+};
+
+export type TopServiceDto = { service: string; count: number };
+export type TechnicianLoadDto = { name: string; count: number };
+
+export type DashboardAnalyticsResponse = {
+  demandByHour: number[];         // 24 buckets, 0..23 local org time
+  outcomes: OutcomeDto[];         // booked / escalated / dropped, pct sums to 100
+  revenueByDay: SeriesPointDto[];          // 30d
+  bookingsByDay: SeriesPointDto[];         // 30d
+  aiBookingRateByDay: SeriesPointDto[];    // 30d, 0-100 %
+  aiCostByDay: SeriesPointDto[];           // 30d, $ (global — rl_ai_usage has no org col)
+  topServices: TopServiceDto[];            // top 5 by appointment count
+  technicianLoad: TechnicianLoadDto[];     // top 5 by appointment count
+};
+
+export type DashboardApiErrorResponse = {
+  error: 'no_organization' | 'invalid_query' | 'server_error';
 };

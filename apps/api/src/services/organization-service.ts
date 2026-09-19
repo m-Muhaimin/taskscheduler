@@ -28,6 +28,10 @@ function organizationsTable(): string {
   return process.env.ORGANIZATIONS_TABLE ?? 'rl_organizations';
 }
 
+function organizationMembersTable(): string {
+  return process.env.ORGANIZATION_MEMBERS_TABLE ?? 'rl_organization_members';
+}
+
 function twilioNumbersTable(): string {
   return process.env.TWILIO_NUMBERS_TABLE ?? 'rl_twilio_numbers';
 }
@@ -72,6 +76,33 @@ export async function getOrganizationById(id: string): Promise<OrganizationRow |
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+/**
+ * Minimal org context the dashboard routes need to scope every query:
+ * the org the user belongs to plus its IANA timezone.
+ */
+export interface OrgContext {
+  organizationId: string;
+  timezone: string;
+}
+
+/**
+ * Resolve the owning organization for an authenticated tradesperson (T2+T3).
+ * Returns null when the user is not an active member of any org.
+ */
+export async function getOrgContextByUserId(userId: string): Promise<OrgContext | null> {
+  const { rows } = await getPool().query<{ organization_id: string; timezone: string }>(
+    `select m.organization_id, o.timezone
+     from public.${organizationMembersTable()} m
+     join public.${organizationsTable()} o on o.id = m.organization_id
+     where m.user_id = $1 and o.status = 'active'
+     limit 1`,
+    [userId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return { organizationId: row.organization_id, timezone: row.timezone || 'America/New_York' };
 }
 
 /**
