@@ -51,8 +51,30 @@ services:
       - key: GOOGLE_REDIRECT_URI
         sync: false
 
+      - key: AI_PROVIDER
+        value: ollama
+
+      - key: OLLAMA_MODEL
+        value: gemma4:cloud
+
+      - key: OLLAMA_BASE_URL
+        value: https://ollama.com
+
+      - key: OLLAMA_API_KEY
+        sync: false
       - key: WEB_BASE_URL
         value: https://ridgelineai.onrender.com
+      - key: AI_PROVIDER
+        value: ollama
+
+      - key: OLLAMA_MODEL
+        value: gemma4:cloud
+
+      - key: OLLAMA_BASE_URL
+        value: https://ollama.com
+
+      - key: OLLAMA_API_KEY
+        sync: false
 
 
   # ----------------------------------------------------------------
