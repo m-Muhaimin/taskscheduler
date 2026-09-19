@@ -237,6 +237,30 @@ create unique index if not exists rl_organizations_slug_idx
 alter table public.rl_organizations enable row level security;
 revoke all on public.rl_organizations from anon, authenticated;
 
+-- ============================================================================
+-- RL_010 addendum — org-scoped ai_usage + per-org settings (mirror of
+--   ~/.supabase/migrations/RL/RL_010_000_ai_usage_org_org_settings.sql)
+-- Adds rl_ai_usage.organization_id (FK → rl_organizations, on delete cascade;
+-- nullable so pre-org rows keep working) + (organization_id, created_at) index,
+-- and rl_organizations.settings (jsonb, default '{}'). Idempotent.
+-- ============================================================================
+
+alter table public.rl_ai_usage
+  add column if not exists organization_id uuid
+  references public.rl_organizations(id) on delete cascade;
+
+create index if not exists rl_ai_usage_org_created_idx
+  on public.rl_ai_usage (organization_id, created_at desc);
+
+alter table public.rl_organizations
+  add column if not exists settings jsonb not null default '{}'::jsonb;
+
+comment on table public.rl_ai_usage is
+  'per-LLM-call usage + cost ledger, org-scoped via organization_id — internal, server-only access (RLS deny-by-default)';
+
+comment on table public.rl_organizations is
+  'tenant root with per-org settings jsonb — internal, server-only access (RLS deny-by-default)';
+
 -- ---------------------------------------------------------------------------
 -- organization_members — links rl_tradespeople identities to an org.
 -- ---------------------------------------------------------------------------

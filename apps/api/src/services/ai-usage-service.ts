@@ -24,6 +24,8 @@ export interface RecordAiUsageInput {
   estimatedCostUsd?: number | null;
   /** classifyStep source label that produced this usage: 'llm' or 'merged'. */
   source?: AiUsageSource;
+  /** Owning organization (T9): nullable so pre-org rows keep working. */
+  organizationId?: string | null;
 }
 
 export interface AiUsageRecord {
@@ -35,6 +37,7 @@ export interface AiUsageRecord {
   tokensOutput: number;
   estimatedCostUsd: number;
   source: AiUsageSource;
+  organizationId: string | null;
   createdAt: string;
 }
 
@@ -79,6 +82,7 @@ interface AiUsageRow {
   tokens_output: number;
   estimated_cost_usd: number | string;
   source: AiUsageSource;
+  organization_id: string | null;
   created_at: Date;
 }
 
@@ -96,11 +100,20 @@ export async function recordAiUsage(input: RecordAiUsageInput): Promise<AiUsageR
 
   const { rows } = await getPool().query<AiUsageRow>(
     `insert into ${tableName}
-       (request_id, provider, model, tokens_input, tokens_output, estimated_cost_usd, source)
-     values ($1, $2, $3, $4, $5, $6, $7)
+       (request_id, provider, model, tokens_input, tokens_output, estimated_cost_usd, source, organization_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)
      returning id, request_id, provider, model, tokens_input, tokens_output,
-               estimated_cost_usd, source, created_at`,
-    [input.requestId, input.provider, input.model, input.tokensInput, input.tokensOutput, cost, source],
+               estimated_cost_usd, source, organization_id, created_at`,
+    [
+      input.requestId,
+      input.provider,
+      input.model,
+      input.tokensInput,
+      input.tokensOutput,
+      cost,
+      source,
+      input.organizationId ?? null,
+    ],
   );
 
   const row = rows[0];
@@ -117,6 +130,7 @@ export async function recordAiUsage(input: RecordAiUsageInput): Promise<AiUsageR
     tokensOutput: row.tokens_output,
     estimatedCostUsd: typeof row.estimated_cost_usd === 'string' ? Number(row.estimated_cost_usd) : row.estimated_cost_usd,
     source: row.source,
+    organizationId: row.organization_id,
     createdAt: row.created_at.toISOString(),
   };
 }

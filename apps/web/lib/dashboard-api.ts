@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authedFetch, clearSessionCookie } from "@/lib/auth";
 import type {
+  AutomationSettings,
   DashboardAnalyticsResponse,
+  DashboardAutomationResponse,
   DashboardCustomersResponse,
   DashboardInboxResponse,
   DashboardJobsResponse,
   DashboardScheduleResponse,
   DashboardSummaryResponse,
+  InboxActionResponse,
 } from "@tradescheduler/shared";
 
 /**
@@ -101,6 +104,113 @@ export function getCustomers(): Promise<DashboardCustomersResponse | NoOrganizat
 
 export function getAnalytics(): Promise<DashboardAnalyticsResponse | NoOrganization | typeof SESSION_EXPIRED> {
   return request<DashboardAnalyticsResponse>("/api/dashboard/analytics");
+}
+
+// ── Mutations (T10/T11) ─────────────────────────────────────────────────────
+// POST/PATCH helpers mirror `request`'s error contract (401 -> SESSION_EXPIRED
+// + redirect, 403 no_organization -> NO_ORGANIZATION) but send a JSON body and
+// translate the API error codes into copy for the caller's toast.
+
+interface MutateOptions {
+  method: "POST" | "PATCH";
+  body?: unknown;
+}
+
+/** Maps dashboard mutation error codes to user-facing copy (toast text). */
+const MUTATION_ERROR_COPY: Record<string, string> = {
+  invalid_body: "Check the details and try again.",
+  conversation_not_found: "This conversation is no longer available. Refresh the inbox.",
+  no_suggestion: "There's no suggested reply to approve for this conversation.",
+};
+
+async function mutate<T>(path: string, { method, body }: MutateOptions): Promise<T | NoOrganization | typeof SESSION_EXPIRED> {
+  let res: Response;
+  try {
+    res = await authedFetch(path, {
+      method,
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new DashboardApiError(0, "Couldn't reach the dashboard service. Check your connection and try again.");
+  }
+
+  if (res.status === 401) {
+    clearSessionCookie();
+    window.location.assign("/login");
+    return SESSION_EXPIRED;
+  }
+
+  if (res.status === 403) {
+    const bodyJson: unknown = await res.json().catch(() => null);
+    if ((bodyJson as { error?: string } | null)?.error === "no_organization") return NO_ORGANIZATION;
+    throw new DashboardApiError(403, "You don't have access to this workspace.");
+  }
+
+  if (!res.ok) {
+    const bodyJson: unknown = await res.json().catch(() => null);
+    const code = (bodyJson as { error?: string } | null)?.error;
+    throw new DashboardApiError(
+      res.status,
+      (code && MUTATION_ERROR_COPY[code]) || `The dashboard service returned ${res.status}. Try again in a moment.`,
+    );
+  }
+
+  return (await res.json()) as T;
+}
+
+/**
+ * POST /api/dashboard/inbox/:conversationId/reply — queues an outbound reply
+ * (provider 'manual', status 'queued' — NO real SMS is sent in dev) and closes
+ * the conversation. Response body is the T10 InboxActionResponse contract.
+ */
+export function replyToInboxItem(
+  conversationId: string,
+  body: string,
+): Promise<InboxActionResponse | NoOrganization | typeof SESSION_EXPIRED> {
+  return mutate<InboxActionResponse>(`/api/dashboard/inbox/${encodeURIComponent(conversationId)}/reply`, {
+    method: "POST",
+    body: { body },
+  });
+}
+
+/**
+ * POST /api/dashboard/inbox/:conversationId/approve — the server derives the
+ * suggestion body (last outbound reply, else offered slots, else escalation
+ * reason) and queues it as an outbound message, then closes the conversation.
+ */
+export function approveInboxItem(
+  conversationId: string,
+): Promise<InboxActionResponse | NoOrganization | typeof SESSION_EXPIRED> {
+  return mutate<InboxActionResponse>(`/api/dashboard/inbox/${encodeURIComponent(conversationId)}/approve`, {
+    method: "POST",
+    body: {},
+  });
+}
+
+/**
+ * GET /api/dashboard/settings/automation — the org's automation toggles with
+ * server-side defaults merged over stored values (aiFrontDesk/reviewRequests
+ * default true, depositRequired default false).
+ */
+export function getAutomationSettings(): Promise<
+  DashboardAutomationResponse | NoOrganization | typeof SESSION_EXPIRED
+> {
+  return request<DashboardAutomationResponse>("/api/dashboard/settings/automation");
+}
+
+/**
+ * PATCH /api/dashboard/settings/automation — merges the partial into the
+ * org's settings and returns the FULL merged automation object.
+ */
+export function updateAutomationSettings(
+  patch: Partial<AutomationSettings>,
+): Promise<DashboardAutomationResponse | NoOrganization | typeof SESSION_EXPIRED> {
+  return mutate<DashboardAutomationResponse>("/api/dashboard/settings/automation", {
+    method: "PATCH",
+    body: { automation: patch },
+  });
 }
 
 // ── Load-state hook (one fetch per mount; retry re-runs the loader) ────────

@@ -5,6 +5,7 @@ import { Check, Globe, MessageSquare, Phone } from "lucide-react";
 import type { InboxItem } from "@/lib/types";
 import { Chip } from "@/components/ui/chip";
 import { useToast } from "@/components/ui/toast";
+import { NO_ORGANIZATION, SESSION_EXPIRED, approveInboxItem, replyToInboxItem } from "@/lib/dashboard-api";
 
 const BAR_COLOR: Record<InboxItem["state"], string> = {
   attention: "var(--danger)",
@@ -28,8 +29,10 @@ interface InboxRowProps {
 }
 
 export function InboxRow({ item, compact, index = 0, onResolve }: InboxRowProps) {
-  // idle -> approving (button shows a tick) -> leaving (row collapses) -> removed by the parent
+  // idle -> submitting (API in flight) -> approving (button shows a tick) ->
+  // leaving (row collapses) -> removed by the parent
   const [phase, setPhase] = useState<"idle" | "approving" | "leaving">("idle");
+  const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timers = useRef<number[]>([]);
@@ -45,8 +48,10 @@ export function InboxRow({ item, compact, index = 0, onResolve }: InboxRowProps)
     if (editing) textareaRef.current?.focus();
   }, [editing]);
 
-  function resolve(message: string) {
-    if (phase !== "idle") return;
+  /** Flips the row to the ✓ Approved phase, then collapses and leaves the list.
+   *  The conversation closes server-side; the item would read 'handled' on the
+   *  next fetch (T10) — we don't refetch, the local phase IS the handled flip. */
+  function complete(message: string) {
     setEditing(false);
     setPhase("approving");
     toast.push(message, { tone: "success" });
@@ -54,7 +59,50 @@ export function InboxRow({ item, compact, index = 0, onResolve }: InboxRowProps)
     timers.current.push(window.setTimeout(() => onResolve?.(item.id), 480 + 300));
   }
 
-  const busy = phase !== "idle";
+  function fail(message: string) {
+    toast.push(message, { tone: "danger" });
+  }
+
+  /** Sentinels from the data layer: the redirect/onboarding state is handled
+   *  elsewhere — the row just stops and stays editable with no toast. */
+  function swallowed(result: unknown): boolean {
+    return result === SESSION_EXPIRED || result === NO_ORGANIZATION;
+  }
+
+  async function sendReply() {
+    if (busy) return;
+    const body = (textareaRef.current?.value ?? "").trim();
+    if (!body) {
+      fail("Enter a reply before sending.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await replyToInboxItem(item.id, body);
+      if (swallowed(result)) return;
+      complete(`Reply sent to ${item.name}`);
+    } catch (err) {
+      fail(err instanceof Error && err.message ? err.message : "Couldn't send the reply. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function approve() {
+    if (busy) return;
+    setSubmitting(true);
+    try {
+      const result = await approveInboxItem(item.id);
+      if (swallowed(result)) return;
+      complete(`Approved: ${item.name}`);
+    } catch (err) {
+      fail(err instanceof Error && err.message ? err.message : "Couldn't approve. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const busy = phase !== "idle" || submitting;
 
   return (
     <div className="expandable" data-collapsed={phase === "leaving"} data-fade="true">
@@ -95,10 +143,16 @@ export function InboxRow({ item, compact, index = 0, onResolve }: InboxRowProps)
                       rows={2}
                       placeholder="Edit the AI's suggested reply before sending..."
                       defaultValue={item.suggestion}
+                      disabled={busy}
+                      aria-busy={submitting || undefined}
                       onKeyDown={(e) => {
                         if (e.key === "Escape") {
                           e.stopPropagation();
                           setEditing(false);
+                        }
+                        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                          e.preventDefault();
+                          void sendReply();
                         }
                       }}
                     />
@@ -106,11 +160,17 @@ export function InboxRow({ item, compact, index = 0, onResolve }: InboxRowProps)
                       <button
                         type="button"
                         className="btn btn-primary btn-sm"
-                        onClick={() => resolve(`Reply sent to ${item.name}`)}
+                        disabled={busy}
+                        onClick={() => void sendReply()}
                       >
-                        Send reply
+                        {submitting ? "Sending…" : "Send reply"}
                       </button>
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={busy}
+                        onClick={() => setEditing(false)}
+                      >
                         Cancel
                       </button>
                     </div>
@@ -135,10 +195,12 @@ export function InboxRow({ item, compact, index = 0, onResolve }: InboxRowProps)
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => resolve(`Approved: ${item.name}`)}
+                onClick={() => void approve()}
                 className="btn btn-primary btn-sm min-w-[84px]"
               >
-                {phase === "idle" ? (
+                {submitting ? (
+                  "Approving…"
+                ) : phase === "idle" ? (
                   "Approve"
                 ) : (
                   <>

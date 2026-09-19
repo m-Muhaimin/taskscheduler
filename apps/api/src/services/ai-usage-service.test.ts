@@ -40,6 +40,7 @@ function row(overrides: Record<string, unknown> = {}) {
     tokens_output: 500,
     estimated_cost_usd: '0.00045',
     source: 'llm',
+    organization_id: null,
     created_at: new Date('2026-09-18T10:00:00Z'),
     ...overrides,
   };
@@ -68,13 +69,36 @@ describe('recordAiUsage', () => {
       tokensOutput: 500,
       estimatedCostUsd: 0.00045,
       source: 'llm',
+      organizationId: null,
       createdAt: '2026-09-18T10:00:00.000Z',
     });
 
     const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('insert into rl_ai_usage');
+    expect(sql).toContain('organization_id');
     expect(sql).toContain('returning');
-    expect(params).toEqual(['req-1', 'openai', 'gpt-4o-mini', 1000, 500, 0.00045, 'llm']);
+    expect(params).toEqual(['req-1', 'openai', 'gpt-4o-mini', 1000, 500, 0.00045, 'llm', null]);
+  });
+
+  it('inserts the owning organization when organizationId is provided', async () => {
+    const { recordAiUsage } = await loadService();
+    const orgId = 'a18c3a2a-dbb2-43cd-a4ac-9aa7cc3f2007';
+    mocks.query.mockResolvedValue({ rows: [row({ organization_id: orgId })] });
+
+    const record = await recordAiUsage({
+      requestId: 'req-org',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      tokensInput: 10,
+      tokensOutput: 5,
+      organizationId: orgId,
+    });
+
+    expect(record.organizationId).toBe(orgId);
+    const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('organization_id');
+    // cost for 10/5 tokens is computed by the service (0.0000045 → rounded 0.000005)
+    expect(params).toEqual(['req-org', 'openai', 'gpt-4o-mini', 10, 5, 0.000005, 'llm', orgId]);
   });
 
   it('computes the cost with estimateCostUsd when none is provided', async () => {
@@ -92,7 +116,7 @@ describe('recordAiUsage', () => {
     // 1000 * 0.15/1M + 500 * 0.6/1M = 0.00015 + 0.0003 = 0.00045
     const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('insert into rl_ai_usage');
-    expect(params).toEqual(['req-2', 'openai', 'gpt-4o-mini', 1000, 500, 0.00045, 'llm']);
+    expect(params).toEqual(['req-2', 'openai', 'gpt-4o-mini', 1000, 500, 0.00045, 'llm', null]);
   });
 
   it('records source merged when the superset path produced the usage', async () => {
@@ -109,7 +133,7 @@ describe('recordAiUsage', () => {
     });
 
     const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
-    expect(params).toEqual(['req-3', 'census', 'census/llama-4-scout', 10, 5, 0, 'merged']);
+    expect(params).toEqual(['req-3', 'census', 'census/llama-4-scout', 10, 5, 0, 'merged', null]);
   });
 
   it('honors the AI_USAGE_TABLE override', async () => {

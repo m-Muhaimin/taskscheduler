@@ -6,8 +6,8 @@ import type { DashboardApiErrorResponse } from '@tradescheduler/shared';
 
 /**
  * GET /api/dashboard/analytics — 30d demand/outcomes/revenue/booking-rate/cost
- * series plus top services and technician load. aiCostByDay is a GLOBAL series
- * (rl_ai_usage has no org column) — see the T2+T3 brief. requireAuth
+ * series plus top services and technician load. aiCostByDay is org-scoped
+ * (rl_ai_usage.organization_id, T9) — see the shared type comment. requireAuth
  * guarantees req.auth before this handler runs.
  */
 const router = Router();

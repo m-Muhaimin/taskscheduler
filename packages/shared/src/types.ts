@@ -444,11 +444,36 @@ export type DashboardAnalyticsResponse = {
   revenueByDay: SeriesPointDto[];          // 30d
   bookingsByDay: SeriesPointDto[];         // 30d
   aiBookingRateByDay: SeriesPointDto[];    // 30d, 0-100 %
-  aiCostByDay: SeriesPointDto[];           // 30d, $ (global — rl_ai_usage has no org col)
+  aiCostByDay: SeriesPointDto[];           // 30d, $ (org-scoped — rl_ai_usage.organization_id, T9)
   topServices: TopServiceDto[];            // top 5 by appointment count
   technicianLoad: TechnicianLoadDto[];     // top 5 by appointment count
 };
 
 export type DashboardApiErrorResponse = {
-  error: 'no_organization' | 'invalid_query' | 'server_error';
+  error:
+    | 'no_organization'
+    | 'invalid_query'
+    | 'server_error'
+    | 'invalid_body'
+    | 'conversation_not_found'
+    | 'no_suggestion';
 };
+
+/** Success body for POST /api/dashboard/inbox/:conversationId/reply and
+ *  POST /api/dashboard/inbox/:conversationId/approve (T10). */
+export interface InboxActionResponse {
+  ok: true;
+}
+
+/** Automation toggle values, persisted per org in
+ *  rl_organizations.settings.automation (T11). */
+export interface AutomationSettings {
+  aiFrontDesk: boolean;
+  reviewRequests: boolean;
+  depositRequired: boolean;
+}
+
+/** GET/PATCH /api/dashboard/settings/automation response body (T11). */
+export interface DashboardAutomationResponse {
+  automation: AutomationSettings;
+}

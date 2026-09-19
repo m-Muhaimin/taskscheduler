@@ -15,13 +15,21 @@ interface ToggleListProps {
   rows: readonly ToggleRow[];
   onToggle?: (row: ToggleRow, next: boolean) => void;
   className?: string;
+  /**
+   * CONTROLLED mode (T11): when provided, the Switch reads `on` from these
+   * values and `onToggle` is the ONLY writer — no internal setState. Missing
+   * keys fall back to the row's defaultOn so partial records don't glitch.
+   * When omitted, the list stays fully uncontrolled (internal state seeded
+   * from defaultOn) — the landing page "Your rules" section relies on that.
+   */
+  values?: Record<string, boolean>;
 }
 
 /**
  * Settings-style list of switches. The dashboard Settings page and the landing
  * page's "Your rules" section render this exact component.
  */
-export function ToggleList({ rows, onToggle, className }: ToggleListProps) {
+export function ToggleList({ rows, onToggle, className, values }: ToggleListProps) {
   const base = useId();
   const [state, setState] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(rows.map((r) => [r.id, r.defaultOn]))
@@ -31,6 +39,7 @@ export function ToggleList({ rows, onToggle, className }: ToggleListProps) {
     <ul className={clsx("card divided overflow-hidden", className)}>
       {rows.map((row) => {
         const switchId = `${base}-${row.id}`;
+        const on = values ? (values[row.id] ?? row.defaultOn) : state[row.id];
         return (
           <li key={row.id} className="transition-colors hover:bg-surface-2/60">
             {/* the label makes the whole row a click target for the switch */}
@@ -41,11 +50,16 @@ export function ToggleList({ rows, onToggle, className }: ToggleListProps) {
               </span>
               <Switch
                 id={switchId}
-                on={state[row.id]}
+                on={on}
                 label={row.title}
                 onChange={(next) => {
-                  setState((s) => ({ ...s, [row.id]: next }));
-                  onToggle?.(row, next);
+                  if (values) {
+                    // Controlled: the parent owns the value — just notify it.
+                    onToggle?.(row, next);
+                  } else {
+                    setState((s) => ({ ...s, [row.id]: next }));
+                    onToggle?.(row, next);
+                  }
                 }}
               />
             </label>

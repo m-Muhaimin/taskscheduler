@@ -120,3 +120,50 @@ export async function resolveOrganizationIdByTwilioNumber(
   );
   return rows[0]?.organization_id ?? null;
 }
+
+// ---------------------------------------------------------------------------
+// Per-org settings (T11) — rl_organizations.settings jsonb (default '{}').
+// The dashboard automation toggles are stored under settings.automation;
+// every OTHER key in the jsonb is preserved untouched by updates.
+// ---------------------------------------------------------------------------
+
+/** Full settings jsonb of an org, or null when the org row is missing. */
+export async function getOrganizationSettings(orgId: string): Promise<Record<string, unknown> | null> {
+  const { rows } = await getPool().query<{ settings: unknown }>(
+    `select settings from public.${organizationsTable()}
+     where id = $1`,
+    [orgId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return (row.settings as Record<string, unknown>) ?? {};
+}
+
+/**
+ * Merge `patch` into `settings.automation` (org-scoped UPDATE … WHERE id —
+ * orgId always comes from the caller's membership-resolved org context) and
+ * return the full updated settings jsonb. Other settings keys (brand, …) are
+ * preserved: jsonb_set only touches the '{automation}' path, and the
+ * automation object itself is merged (coalesce + ||) so unknown automation
+ * keys in storage also survive. Returns null when the org row is missing.
+ */
+export async function updateOrganizationSettings(
+  orgId: string,
+  patch: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  const { rows } = await getPool().query<{ settings: unknown }>(
+    `update public.${organizationsTable()}
+     set settings = jsonb_set(
+           settings,
+           '{automation}',
+           coalesce(settings -> 'automation', '{}'::jsonb) || $2::jsonb
+         ),
+         updated_at = now()
+     where id = $1
+     returning settings`,
+    [orgId, JSON.stringify(patch)],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return (row.settings as Record<string, unknown>) ?? {};
+}

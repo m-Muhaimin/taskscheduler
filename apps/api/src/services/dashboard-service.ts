@@ -15,8 +15,9 @@
  *  - rl_appointments.status has NO completed/in-progress values — the jobs
  *    status map stops at what the DB supports ('Completed'/'In progress' are
  *    future states, per the T2+T3 brief).
- *  - rl_ai_usage has NO org column — aiCostByDay is a global series
- *    (noted in the analytics response type comment too).
+ *  - rl_ai_usage carries organization_id (nullable, T9/RL_010) — aiCostByDay
+ *    is org-scoped (NULL-org rows are excluded); noted in the analytics
+ *    response type comment too.
  *  - rl_escalations has NO org column — escalations are attributed to an org
  *    only via customer_phone joining org conversations/customers.
  */
@@ -547,15 +548,48 @@ type InboxRow = {
   last_message_body: string | null;
   outbound_body: string | null;
   state: string | null;
-  offered_slots: Array<{ optionNumber: number; startTime: string; endTime: string }> | null;
+  offered_slots: InboxOfferedSlots | null;
   escalation_reason: string | null;
 };
+
+/** Shape of a conversation-state offered_slots jsonb value as surfaced by the
+ *  inbox queries (optionNumber is 1|2|3 in the reserved schema but comes back
+ *  as a plain number from jsonb). */
+export type InboxOfferedSlots = Array<{ optionNumber: number; startTime: string; endTime: string }>;
 
 const CHANNEL_LABEL: Record<string, InboxChannel> = {
   sms: 'SMS',
   voice: 'Voice',
   web: 'Web',
 };
+
+/**
+ * Inbox suggestion derivation — single source of truth (T10): the same logic
+ * drives the GET /api/dashboard/inbox `suggestion` field and POST
+ * /api/dashboard/inbox/:conversationId/approve's server-derived body:
+ *   last outbound body → else latest state's offered_slots top-2 times
+ *   ("Offer slots: …") → else escalation_reason (state 'escalated' only)
+ *   → else '' (approve returns 400 no_suggestion).
+ */
+export function deriveInboxSuggestion(opts: {
+  outboundBody: string | null;
+  state: string | null;
+  offeredSlots: InboxOfferedSlots | null;
+  escalationReason: string | null;
+  tz: string;
+}): string {
+  let suggestion = opts.outboundBody ?? '';
+  if (!suggestion && opts.state) {
+    const slots = opts.offeredSlots;
+    if (Array.isArray(slots) && slots.length > 0) {
+      const times = slots.slice(0, 2).map((s) => formatLocalWeekdayTime(s.startTime, opts.tz));
+      suggestion = `Offer slots: ${times.join(', ')}`;
+    } else if (opts.state === 'escalated' && opts.escalationReason) {
+      suggestion = opts.escalationReason;
+    }
+  }
+  return suggestion;
+}
 
 export async function getInboxItems(orgId: string, tz: string, limit: number): Promise<InboxItemDto[]> {
   const { rows } = await q<InboxRow>(
@@ -601,16 +635,13 @@ export async function getInboxItems(orgId: string, tz: string, limit: number): P
     else if (r.status === 'closed') state = 'handled';
     else state = updatedMs >= activeCutoff ? 'active' : 'attention';
 
-    let suggestion = r.outbound_body ?? '';
-    if (!suggestion && r.state) {
-      const slots = r.offered_slots;
-      if (Array.isArray(slots) && slots.length > 0) {
-        const times = slots.slice(0, 2).map((s) => formatLocalWeekdayTime(s.startTime, tz));
-        suggestion = `Offer slots: ${times.join(', ')}`;
-      } else if (r.state === 'escalated' && r.escalation_reason) {
-        suggestion = r.escalation_reason;
-      }
-    }
+    const suggestion = deriveInboxSuggestion({
+      outboundBody: r.outbound_body,
+      state: r.state,
+      offeredSlots: r.offered_slots,
+      escalationReason: r.escalation_reason,
+      tz,
+    });
 
     return {
       id: r.id,
@@ -847,20 +878,22 @@ export async function getAnalytics(orgId: string, tz: string): Promise<Dashboard
          order by 1`,
         [start, end, orgId, tz],
       ),
-      // aiCostByDay — GLOBAL series: rl_ai_usage has no org column (brief §2;
-      // noted in the shared DashboardAnalyticsResponse type comment too).
+      // aiCostByDay — org-scoped series: rl_ai_usage now carries
+      // organization_id (T9/RL_010); NULL-org rows are excluded along with
+      // other orgs' — noted in the shared DashboardAnalyticsResponse type comment.
       q<{ date: string; value: number }>(
         `select g.d::date::text as date, coalesce(agg.v, 0)::float8 as value
          from generate_series($1::date, $2::date, interval '1 day') as g(d)
          left join (
-           select (u.created_at at time zone $3)::date as d, sum(u.estimated_cost_usd) as v
+           select (u.created_at at time zone $4)::date as d, sum(u.estimated_cost_usd) as v
            from public.${aiUsageTable()} u
-           where u.created_at >= ($1::date at time zone $3)
-             and u.created_at < (($2::date + 1) at time zone $3)
+           where u.organization_id = $3
+             and u.created_at >= ($1::date at time zone $4)
+             and u.created_at < (($2::date + 1) at time zone $4)
            group by 1
          ) agg on agg.d = g.d::date
          order by 1`,
-        [start, end, tz],
+        [start, end, orgId, tz],
       ),
       // topServices — non-null service_description, count desc
       q<{ service: string; count: number }>(

@@ -8,7 +8,8 @@ import { useToast } from "@/components/ui/toast";
 import { useSession } from "@/lib/session";
 import { authedFetch } from "@/lib/auth";
 import { validateEmail, validatePassword } from "@/lib/validation";
-import type { GoogleConnectionStatus } from "@tradescheduler/shared";
+import { NO_ORGANIZATION, SESSION_EXPIRED, getAutomationSettings, updateAutomationSettings } from "@/lib/dashboard-api";
+import type { AutomationSettings, GoogleConnectionStatus } from "@tradescheduler/shared";
 
 const ROWS: ToggleRow[] = [
   {
@@ -30,6 +31,19 @@ const ROWS: ToggleRow[] = [
     defaultOn: false,
   },
 ];
+
+/** Row id -> AutomationSettings key (T11). Server defaults mirror the rows. */
+const AUTOMATION_DEFAULTS: AutomationSettings = {
+  aiFrontDesk: true,
+  reviewRequests: true,
+  depositRequired: false,
+};
+
+const ROW_TO_SETTING: Record<ToggleRow["id"], keyof AutomationSettings> = {
+  "ai-front-desk": "aiFrontDesk",
+  "review-requests": "reviewRequests",
+  "deposit-required": "depositRequired",
+};
 
 type GoogleBanner = "connected" | "skipped" | "failed" | null;
 
@@ -381,6 +395,50 @@ export function SettingsPanel() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [banner, setBanner] = useState<GoogleBanner>(null);
 
+  // Automation toggles (T11): render the server defaults immediately, swap in
+  // the stored values when GET resolves; a failed load keeps defaults + toast.
+  const [automation, setAutomation] = useState<AutomationSettings>(AUTOMATION_DEFAULTS);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAutomationSettings()
+      .then((result) => {
+        if (cancelled) return;
+        if (result === SESSION_EXPIRED || result === NO_ORGANIZATION) return; // redirect / onboarding in flight
+        setAutomation(result.automation);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        toast.push("Couldn't load automation settings — showing the defaults.", { tone: "danger" });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load-once on mount
+  }, []);
+
+  /** Optimistic flip -> PATCH -> server truth; revert + error toast on failure. */
+  async function toggleAutomation(row: ToggleRow, next: boolean) {
+    const key = ROW_TO_SETTING[row.id];
+    const prev = automation[key];
+    if (prev === next) return;
+    setAutomation((a) => ({ ...a, [key]: next }));
+    try {
+      const result = await updateAutomationSettings({ [key]: next });
+      if (result === SESSION_EXPIRED) return; // logout redirect in flight
+      if (result === NO_ORGANIZATION) {
+        setAutomation((a) => ({ ...a, [key]: prev }));
+        toast.push("Your workspace isn't set up yet.", { tone: "danger" });
+        return;
+      }
+      setAutomation(result.automation);
+      toast.push(`${row.title} turned ${next ? "on" : "off"}`, { tone: next ? "success" : "default" });
+    } catch {
+      setAutomation((a) => ({ ...a, [key]: prev }));
+      toast.push(`Couldn't update ${row.title}. Try again.`, { tone: "danger" });
+    }
+  }
+
   // Real OAuth status + post-redirect banner (no fixture data for OAuth).
   useEffect(() => {
     const param = new URLSearchParams(window.location.search).get("google") as GoogleBanner | null;
@@ -433,9 +491,11 @@ export function SettingsPanel() {
           <h2 className="font-head font-semibold text-[15px] mb-3">Automation</h2>
           <ToggleList
             rows={ROWS}
-            onToggle={(row, next) =>
-              toast.push(`${row.title} turned ${next ? "on" : "off"}`, { tone: next ? "success" : "default" })
-            }
+            /* spread gives the plain-object (index-signature) shape ToggleList's
+               controlled `values` prop expects — AutomationSettings is an
+               interface, which lacks an implicit index signature */
+            values={{ ...automation }}
+            onToggle={(row, next) => void toggleAutomation(row, next)}
           />
         </section>
 
