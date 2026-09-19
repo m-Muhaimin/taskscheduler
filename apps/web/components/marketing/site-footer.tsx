@@ -3,7 +3,7 @@ import Link from "next/link";
 export function SiteFooter() {
   return (
     <footer className="band border-t border-band-rule">
-      <div className="max-w-[1200px] mx-auto px-6 md:px-12 py-8 flex flex-wrap items-center justify-between gap-6">
+      <div className="max-w-[1200px] mx-auto px-6 md:px-12 py-16 md:py-20 flex flex-wrap items-center justify-between gap-6">
         <div className="flex items-center gap-3">
           <span className="w-8 h-8 rounded-[10px] bg-band-accent flex items-center justify-center font-head font-bold text-sm" style={{ color: "#1c1006" }}>
             R

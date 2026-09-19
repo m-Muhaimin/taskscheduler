@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AiSwitch } from "@/components/dashboard/ai-switch";
+import { Eyebrow } from "@/components/ui/eyebrow";
 
 const ROWS = [
   {
@@ -30,9 +31,9 @@ export function Controls() {
   );
 
   return (
-    <section className="max-w-[1200px] mx-auto px-6 md:px-12 py-24" aria-labelledby="controls-heading">
+    <section className="max-w-[1200px] mx-auto px-6 md:px-12 py-16 md:py-20" aria-labelledby="controls-heading">
       <div className="max-w-[720px]">
-        <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-muted mb-4">Your rules</p>
+        <Eyebrow className="mb-4">Your rules</Eyebrow>
         <h2
           id="controls-heading"
           className="font-head font-semibold text-[clamp(1.875rem,3.6vw,2.75rem)] leading-[1.08] tracking-[-0.02em]"

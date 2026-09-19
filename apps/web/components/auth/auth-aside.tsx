@@ -23,11 +23,11 @@ export function AuthAside({ heading }: { heading: string }) {
   return (
     <aside
       aria-label="Example overnight activity"
-      className="hidden lg:flex flex-col justify-center border-l border-border px-12 xl:px-16 py-12"
+      className="hidden lg:flex flex-col justify-center border-l border-border px-10 xl:px-14 py-10"
     >
       <div className="max-w-[440px]">
         <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-muted">Sample overnight log</p>
-        <p className="font-head font-semibold text-[32px] leading-[1.1] tracking-[-0.02em] mt-3 mb-8">{heading}</p>
+        <p className="font-head font-semibold text-[28px] leading-[1.1] tracking-[-0.02em] mt-3 mb-8">{heading}</p>
 
         <ol className="border-t border-border-strong">
           {OVERNIGHT.map((row) => (

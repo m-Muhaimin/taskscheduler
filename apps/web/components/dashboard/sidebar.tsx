@@ -13,6 +13,8 @@ import {
   LogOut,
 } from "lucide-react";
 import { useSession } from "@/lib/session";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Drawer } from "@/components/ui/drawer";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -43,17 +45,20 @@ function NavLink({
   icon: Icon,
   badge,
   active,
+  onNavigate,
 }: {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
   badge?: number;
   active: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <Link
       href={href}
       data-active={active}
+      onClick={() => onNavigate?.()}
       className="nav-item flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-[14px] font-medium text-ink-muted hover:bg-surface-2 hover:text-ink"
     >
       <Icon size={17} className="shrink-0" />
@@ -65,13 +70,19 @@ function NavLink({
   );
 }
 
-export function NavRail() {
+/** Shared sidebar content (used by both the desktop rail and the mobile drawer). */
+export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { user, signOut } = useSession();
+  const { user, signOut, loading } = useSession();
 
   return (
-    <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-border px-4 py-5 bg-surface">
-      <Link href="/" aria-label="Ridgeline home" className="flex items-center gap-2.5 px-1 mb-7 rounded-[10px]">
+    <>
+      <Link
+        href="/"
+        aria-label="Ridgeline home"
+        onClick={() => onNavigate?.()}
+        className="flex items-center gap-2.5 px-1 mb-7 rounded-[10px]"
+      >
         <div className="w-8 h-8 rounded-[9px] bg-accent text-accent-ink flex items-center justify-center font-head font-bold text-sm">
           R
         </div>
@@ -81,35 +92,68 @@ export function NavRail() {
         </div>
       </Link>
 
-      <nav className="flex flex-col gap-0.5">
+      <nav className="flex flex-col gap-0.5 overflow-y-auto flex-1 -mx-4 px-4">
         {NAV_ITEMS.map((item) => (
-          <NavLink key={item.href} {...item} active={pathname === item.href} />
+          <NavLink key={item.href} {...item} active={pathname === item.href} onNavigate={onNavigate} />
         ))}
         <div className="pt-3 mt-2 border-t border-border" />
         {NAV_ITEMS_SECONDARY.map((item) => (
-          <NavLink key={item.href} {...item} active={pathname === item.href} />
+          <NavLink key={item.href} {...item} active={pathname === item.href} onNavigate={onNavigate} />
         ))}
       </nav>
 
       <div className="mt-auto pt-4 border-t border-border">
         <div className="flex items-center gap-2.5 px-1">
-          <div className="w-7 h-7 rounded-full bg-surface-2 border border-border flex items-center justify-center text-[11px] font-mono text-ink-muted">
-            {initialsOf(user?.displayName)}
-          </div>
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium truncate">{user?.displayName ?? "Owner"}</p>
-            <p className="text-[11px] text-ink-faint truncate">{user?.email ?? "Plumbing & HVAC"}</p>
-          </div>
+          {loading ? (
+            <>
+              <Skeleton className="h-7 w-7 rounded-full shrink-0" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-28 max-w-full" />
+                <Skeleton className="h-3 w-36 max-w-full" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="w-7 h-7 rounded-full bg-surface-2 border border-border flex items-center justify-center text-[11px] font-mono text-ink-muted">
+                {initialsOf(user?.displayName)}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium truncate">{user?.displayName ?? "Owner"}</p>
+                <p className="text-[11px] text-ink-faint truncate">{user?.email ?? "Plumbing & HVAC"}</p>
+              </div>
+            </>
+          )}
         </div>
         <button
           type="button"
-          onClick={() => void signOut()}
+          onClick={() => {
+            onNavigate?.();
+            void signOut();
+          }}
           className="nav-item mt-3 w-full flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-[14px] font-medium text-ink-muted hover:bg-surface-2 hover:text-ink"
         >
           <LogOut size={17} className="shrink-0" />
           <span>Sign out</span>
         </button>
       </div>
+    </>
+  );
+}
+
+/** Desktop rail: pinned full-height beside the scrolling main column. */
+export function DesktopSidebar() {
+  return (
+    <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-border px-4 py-5 bg-surface sticky top-0 h-screen overflow-hidden self-start">
+      <SidebarNav />
     </aside>
+  );
+}
+
+/** Mobile drawer: the same content inside the a11y-correct left slide-over. */
+export function MobileSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Drawer open={open} onClose={onClose} label="Navigation">
+      <SidebarNav onNavigate={onClose} />
+    </Drawer>
   );
 }

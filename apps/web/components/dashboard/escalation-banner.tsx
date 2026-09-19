@@ -13,7 +13,10 @@ export function EscalationBanner() {
       className="flex items-center gap-3 px-5 md:px-8 py-2.5 border-b border-border"
       style={{ background: "var(--danger-bg)" }}
     >
-      <AlertTriangle size={15} className="shrink-0" style={{ color: "var(--danger)" }} />
+      <span className="flex items-center gap-2 shrink-0">
+        <span className="pulse-dot" data-tone="danger" aria-hidden="true" />
+        <AlertTriangle size={15} className="shrink-0" style={{ color: "var(--danger)" }} />
+      </span>
       <p className="text-[13px]" style={{ color: "var(--danger)" }}>
         <span className="font-semibold">Possible emergency{"\u2014"}</span> John Whitfield mentioned
         water coming through a ceiling. AI paused the conversation automatically.

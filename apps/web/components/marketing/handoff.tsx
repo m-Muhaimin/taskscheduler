@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { Eyebrow } from "@/components/ui/eyebrow";
 
 const ROWS = [
   {
@@ -18,7 +19,7 @@ const ROWS = [
 export function Handoff() {
   return (
     <section id="handoff" className="bg-surface border-y border-border" aria-labelledby="handoff-heading">
-      <div className="max-w-[1200px] mx-auto px-6 md:px-12 py-24">
+      <div className="max-w-[1200px] mx-auto px-6 md:px-12 py-16 md:py-20">
         <div className="grid lg:grid-cols-12 gap-12 lg:gap-8 items-center">
           <div className="lg:col-span-6 order-2 lg:order-1 reveal">
             <div
@@ -58,7 +59,7 @@ export function Handoff() {
           </div>
 
           <div className="lg:col-span-5 lg:col-start-8 order-1 lg:order-2">
-            <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-muted mb-4">Emergencies and edge cases</p>
+            <Eyebrow className="mb-4">Emergencies and edge cases</Eyebrow>
             <h2
               id="handoff-heading"
               className="font-head font-semibold text-[clamp(1.875rem,3.6vw,2.75rem)] leading-[1.08] tracking-[-0.02em]"

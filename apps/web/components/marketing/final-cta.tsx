@@ -3,7 +3,7 @@ import Link from "next/link";
 export function FinalCta() {
   return (
     <section className="band" aria-labelledby="cta-heading">
-      <div className="max-w-[1200px] mx-auto px-6 md:px-12 py-24 grid lg:grid-cols-12 gap-12 lg:gap-8 lg:items-end">
+      <div className="max-w-[1200px] mx-auto px-6 md:px-12 py-16 md:py-20 grid lg:grid-cols-12 gap-12 lg:gap-8 lg:items-end">
         <h2
           id="cta-heading"
           className="lg:col-span-8 font-head font-semibold text-[clamp(2.25rem,5vw,3.75rem)] leading-[1.04] tracking-[-0.03em]"

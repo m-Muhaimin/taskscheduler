@@ -1,3 +1,5 @@
+import { Eyebrow } from "@/components/ui/eyebrow";
+
 const STEPS = [
   {
     n: "01",
@@ -18,10 +20,10 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section id="how" className="max-w-[1200px] mx-auto px-6 md:px-12 py-24" aria-labelledby="how-heading">
+    <section id="how" className="max-w-[1200px] mx-auto px-6 md:px-12 py-16 md:py-20" aria-labelledby="how-heading">
       <div className="grid lg:grid-cols-12 gap-12 lg:gap-8">
         <div className="lg:col-span-4 lg:sticky lg:top-24 lg:self-start">
-          <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-muted mb-4">How it works</p>
+          <Eyebrow className="mb-4">How it works</Eyebrow>
           <h2
             id="how-heading"
             className="font-head font-semibold text-[clamp(1.875rem,3.6vw,2.75rem)] leading-[1.08] tracking-[-0.02em]"

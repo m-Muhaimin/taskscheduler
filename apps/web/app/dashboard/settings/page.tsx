@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Loader2 } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { AiSwitch } from "@/components/dashboard/ai-switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import { authedFetch } from "@/lib/auth";
 import { useSession } from "@/lib/session";
 import type { GoogleConnectionStatus } from "@tradescheduler/shared";
@@ -57,7 +58,7 @@ function SectionCard({ title, children }: { title: string; children: React.React
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { user, signOut } = useSession();
+  const { user, signOut, loading } = useSession();
   const [state, setState] = useState<Record<string, boolean>>(
     Object.fromEntries(ROWS.map((r) => [r.id, r.defaultOn]))
   );
@@ -118,13 +119,18 @@ export default function SettingsPage() {
             </div>
             <div>
               <p className="text-[13.5px] font-medium">Google Calendar</p>
-              <p className="text-[12px] text-ink-muted mt-0.5">
-                {googleLoading
-                  ? "Checking connection…"
-                  : google.connected
+              {googleLoading ? (
+                <div className="mt-2 space-y-2">
+                  <Skeleton className="h-3.5 w-64 max-w-full" />
+                  <Skeleton className="h-3.5 w-44 max-w-full" />
+                </div>
+              ) : (
+                <p className="text-[12px] text-ink-muted mt-0.5">
+                  {google.connected
                     ? `Connected — syncing to ${google.calendarId ?? "primary"}.`
                     : "Connect Google Calendar to auto-schedule jobs."}
-              </p>
+                </p>
+              )}
             </div>
           </div>
           <div className="shrink-0">
@@ -144,7 +150,7 @@ export default function SettingsPage() {
                 disabled={googleLoading}
                 className="rounded-[10px] bg-accent px-4 py-2 text-[13px] font-medium text-accent-ink hover:opacity-90 disabled:opacity-50"
               >
-                {googleLoading ? "Loading…" : "Connect"}
+                Connect
               </button>
             )}
           </div>
@@ -170,8 +176,17 @@ export default function SettingsPage() {
       <SectionCard title="Account">
         <div className="flex items-center justify-between p-4">
           <div>
-            <p className="text-[13.5px] font-medium">{user?.displayName ?? "Owner"}</p>
-            <p className="text-[12px] text-ink-muted mt-0.5">{user?.email ?? "Not signed in"}</p>
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-3.5 w-32" />
+                <Skeleton className="h-3.5 w-48 max-w-full" />
+              </div>
+            ) : (
+              <>
+                <p className="text-[13.5px] font-medium">{user?.displayName ?? "Owner"}</p>
+                <p className="text-[12px] text-ink-muted mt-0.5">{user?.email ?? "Not signed in"}</p>
+              </>
+            )}
           </div>
           <button
             type="button"
@@ -186,7 +201,6 @@ export default function SettingsPage() {
             <p className="text-[13.5px] font-medium">Session</p>
             <p className="text-[12px] text-ink-muted mt-0.5">{"Signed in with a 7-day session cookie."}</p>
           </div>
-          <Loader2 size={16} className="text-ink-faint" />
         </div>
       </SectionCard>
     </div>

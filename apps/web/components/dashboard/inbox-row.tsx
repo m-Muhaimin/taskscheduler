@@ -55,8 +55,8 @@ export function InboxRow({ item, compact, index = 0, onResolve }: InboxRowProps)
 
   return (
     <div
-      className={`inbox-row metric-card-rise flex items-start gap-3 px-4 py-3 ${resolving ? "is-resolved" : ""}`}
-      style={{ borderLeft: `2.5px solid ${BAR_COLOR[item.state]}`, animationDelay: `${index * 55}ms` }}
+      className={`inbox-row animate-rise flex items-start gap-3 px-4 py-3 ${resolving ? "is-resolved" : ""}`}
+      style={{ borderLeft: `2.5px solid ${BAR_COLOR[item.state]}`, animationDelay: `${index * 60}ms` }}
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 mb-0.5 flex-wrap">

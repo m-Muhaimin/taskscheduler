@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import { Eyebrow } from "@/components/ui/eyebrow";
 
 const QUESTIONS = [
   {
@@ -25,10 +26,10 @@ const QUESTIONS = [
 
 export function Faq() {
   return (
-    <section id="faq" className="max-w-[1200px] mx-auto px-6 md:px-12 pb-24" aria-labelledby="faq-heading">
-      <div className="grid lg:grid-cols-12 gap-12 lg:gap-8 border-t border-border-strong pt-24">
+    <section id="faq" className="max-w-[1200px] mx-auto px-6 md:px-12 pb-16 md:pb-20" aria-labelledby="faq-heading">
+      <div className="grid lg:grid-cols-12 gap-12 lg:gap-8 border-t border-border-strong pt-16 md:pt-20">
         <div className="lg:col-span-4">
-          <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-muted mb-4">Questions</p>
+          <Eyebrow className="mb-4">Questions</Eyebrow>
           <h2
             id="faq-heading"
             className="font-head font-semibold text-[clamp(1.875rem,3.6vw,2.75rem)] leading-[1.08] tracking-[-0.02em]"

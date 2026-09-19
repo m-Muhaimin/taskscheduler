@@ -10,7 +10,7 @@ const FIGURES: { value: string; label: string; accent?: boolean }[] = [
 export function ResultsBand() {
   return (
     <section className="band" aria-labelledby="results-heading">
-      <div className="max-w-[1200px] mx-auto px-6 md:px-12 py-24">
+      <div className="max-w-[1200px] mx-auto px-6 md:px-12 py-16 md:py-20">
         <div className="grid lg:grid-cols-12 gap-8 lg:gap-12 lg:items-end mb-12">
           <div className="lg:col-span-7">
             <p className="font-mono text-[12px] uppercase tracking-[0.12em] mb-4" style={{ color: "var(--band-muted)" }}>

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { AiSwitch } from "./ai-switch";
 import { ThemeToggle } from "./theme-toggle";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/session";
 
 const TITLES: Record<string, string> = {
@@ -27,15 +28,23 @@ function initialsOf(name: string | undefined | null): string {
     .toUpperCase();
 }
 
-export function TopBar() {
+export function TopBar({ onMenu, menuOpen }: { onMenu: () => void; menuOpen: boolean }) {
   const [aiOn, setAiOn] = useState(true);
   const pathname = usePathname();
-  const { user } = useSession();
+  const { user, loading } = useSession();
   const title = TITLES[pathname] ?? "Dashboard";
 
   return (
     <header className="flex items-center gap-4 px-5 md:px-8 py-4 border-b border-border bg-surface sticky top-0 z-10">
-      <button className="md:hidden p-2 -ml-2" aria-label="Menu">
+      <button
+        type="button"
+        onClick={onMenu}
+        aria-label="Menu"
+        aria-haspopup="dialog"
+        aria-controls="mobile-nav"
+        aria-expanded={menuOpen}
+        className="md:hidden p-2 -ml-2"
+      >
         <Menu size={19} />
       </button>
 
@@ -51,9 +60,13 @@ export function TopBar() {
 
         <ThemeToggle />
 
-        <div className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center text-[11px] font-mono text-ink-muted">
-          {initialsOf(user?.displayName)}
-        </div>
+        {loading ? (
+          <Skeleton className="h-9 w-9 rounded-full" />
+        ) : (
+          <div className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center text-[11px] font-mono text-ink-muted">
+            {initialsOf(user?.displayName)}
+          </div>
+        )}
       </div>
     </header>
   );
