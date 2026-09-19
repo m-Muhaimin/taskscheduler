@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { findBookingById, findBookingByPhone, findUserProfile, updateBookingTimes } from './booking-service.js';
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 const orgId = randomUUID();
 const userId = randomUUID();
 const aptId = randomUUID();

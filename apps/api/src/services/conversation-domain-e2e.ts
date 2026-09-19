@@ -27,7 +27,7 @@ if (!connectionString) {
   process.exit(0);
 }
 
-const pool = new Pool({ connectionString, max: 2, connectionTimeoutMillis: 5000 });
+const pool = new Pool({ connectionString, max: 2, connectionTimeoutMillis: 5000, ssl: { rejectUnauthorized: false } });
 
 async function queryOne<T extends QueryResultRow>(sql: string, params: unknown[] = []): Promise<T | null> {
   const { rows } = await pool.query<T>(sql, params);

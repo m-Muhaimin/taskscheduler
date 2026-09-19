@@ -22,7 +22,7 @@ function getPool(): Pool {
     if (!connectionString) {
       throw new Error('DATABASE_URL not configured');
     }
-    pool = new Pool({ connectionString, max: 5, connectionTimeoutMillis: 5000 });
+    pool = new Pool({ connectionString, max: 5, connectionTimeoutMillis: 5000, ssl: { rejectUnauthorized: false } });
   }
   return pool;
 }
