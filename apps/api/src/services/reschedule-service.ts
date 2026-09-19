@@ -44,7 +44,7 @@ export type UserLookupFn = (userId: string) => Promise<{
 export type SmsSendFn = (input: SendSmsInput) => Promise<{ messageSid: string; status: string }>;
 export type ConversationLookupFn = (phone: string) => Promise<ConversationState | null>;
 export type ConversationUpdateFn = (id: string, input: UpdateConversationInput) => Promise<ConversationState>;
-export type CreateEscalationFn = (input: CreateEscalationInput) => Promise<import('./escalation-service.js').Escalation>;
+export type CreateEscalationFn = (input: CreateEscalationInput) => Promise<import('@tradescheduler/shared').Escalation>;
 export type GetAvailableSlotsFn = (
   userId: string,
   calendarId: string,

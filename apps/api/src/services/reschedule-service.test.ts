@@ -13,7 +13,7 @@ import {
   type GetAvailableSlotsFn,
   type PickOfferedSlotsFn,
 } from './reschedule-service.js';
-import type { Booking, ConversationState, OfferedSlot, ConversationStateValue } from '@tradescheduler/shared';
+import type { Booking, ConversationState, OfferedSlot, ConversationStateValue, RescheduleLogEntry } from '@tradescheduler/shared';
 import type { CreateEscalationInput } from './escalation-service.js';
 import type { UpdateConversationInput } from './conversation-service.js';
 import type { GetAvailableSlotsResult } from '@tradescheduler/shared';
@@ -97,7 +97,15 @@ const mockUserLookup = vi.fn<UserLookupFn>().mockResolvedValue(makeUser());
 const mockSmsSend = vi.fn<SmsSendFn>().mockResolvedValue({ messageSid: 'SM-mock-123', status: 'queued' });
 const mockConversationLookup = vi.fn<ConversationLookupFn>().mockResolvedValue(makeConversation());
 const mockConversationUpdate = vi.fn<ConversationUpdateFn>().mockResolvedValue(makeConversation('awaiting_slot_choice'));
-const mockCreateEscalation = vi.fn<CreateEscalationFn>().mockResolvedValue({});
+const mockCreateEscalation = vi.fn<CreateEscalationFn>().mockResolvedValue({
+    id: 'esc-1',
+    type: 'ambiguous_intent',
+    customerPhone: CUSTOMER_PHONE,
+    content: 'test escalation',
+    status: 'pending',
+    createdAt: NOW.toISOString(),
+    resolvedAt: null,
+  });
 const mockCreateConversation = vi.fn().mockResolvedValue(makeConversation('offering_slots', makeOfferedSlots()));
 
 const mockAuthFn = vi.fn().mockResolvedValue({
