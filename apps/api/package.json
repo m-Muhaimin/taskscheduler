@@ -11,7 +11,9 @@
     "worker": "tsx src/worker/index.ts",
     "db:local": "node scripts/local-db.mjs",
     "db:local:reset": "node scripts/local-db.mjs --reset",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "worker:start": "node dist/worker/index.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.116.0",
