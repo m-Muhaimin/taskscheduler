@@ -1,8 +1,9 @@
+import { randomUUID } from 'node:crypto';
+import { classifyStep, createProvider } from '@tradescheduler/ai';
 import { initiateRescheduleFlow, processSlotChoice, confirmReschedule } from '../services/reschedule-service.js';
 import { defaultAuth } from '../services/calendar-service.js';
 import type { QueueJob } from '../services/queue-service.js';
 import { schedulingEngine } from '../services/scheduling-engine.js';
-import { parseIntent } from '../services/intent-service.js';
 import { sendSms } from '../services/sms-service.js';
 import { createEscalation } from '../services/escalation-service.js';
 import { createConversation, getConversationByPhone } from '../services/conversation-service.js';
@@ -13,6 +14,8 @@ import {
 } from '../services/conversation-domain.js';
 import { resolveOrganizationIdByTwilioNumber } from '../services/organization-service.js';
 import { findBookingById, findUserProfile, findBookingByPhone, updateBookingTimes, findUserBookingsInWindow } from '../services/booking-service.js';
+import { recordAiUsage } from '../services/ai-usage-service.js';
+import type { AiUsageSource } from '../services/ai-usage-service.js';
 
 /** Handler for `type = 'inbound_sms'` (build-sequence.md Step 8). */
 
@@ -102,7 +105,44 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
     conversationStateExists = false;
   }
 
-  const { intent, confidence } = parseIntent(body, conversationStateExists);
+  const requestId = randomUUID();
+  const provider = createProvider(); // reads AI_PROVIDER env; default fallback-only → rule parser
+  const result = await classifyStep(
+    provider,
+    { body, conversationStateExists, suggestedIntent: null },
+    // onEscalate — classifyStep passes customerPhone "unknown"; override with the REAL phone
+    async (input) => {
+      await createEscalation({
+        type: input.type,
+        customerPhone,
+        content: input.content,
+      });
+    },
+    requestId,
+  );
+
+  // Cost ledger (Checkpoint 01 §3 / P0.9): one rl_ai_usage row per real LLM
+  // call. Observability only — classification + dispatch already happened, so
+  // a failed insert must never kill the job; the whole record is wrapped.
+  if (result.aiUsage) {
+    try {
+      await recordAiUsage({
+        requestId,
+        provider: provider.metadata().name, // 'openai' | 'census' | 'ollama'; unknown → cost 0
+        model: result.aiUsage.model,
+        tokensInput: result.aiUsage.tokensInput,
+        tokensOutput: result.aiUsage.tokensOutput,
+        // aiUsage is non-null only for 'llm'/'merged' sources (classifyStep
+        // contract), so the wide ClassifyResult.source union narrows safely here.
+        source: result.source as AiUsageSource,
+        organizationId, // may be null (pre-org rows keep working)
+      });
+    } catch (err) {
+      console.error('[worker] ai-usage record failed:', err);
+    }
+  }
+
+  const { intent, confidence } = result.intentResult;
 
   switch (intent) {
     case 'reschedule': {
@@ -130,7 +170,9 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
     }
 
     case 'unknown': {
-      await escalateAmbiguousIntent(customerPhone, body);
+      // classifyStep already escalated unclassifiable messages (source 'escalation');
+      // guard so we never write a second escalation row for the same message.
+      if (result.source !== 'escalation') await escalateAmbiguousIntent(customerPhone, body);
       break;
     }
 
@@ -140,13 +182,13 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
     }
 
     default: {
-      await escalateAmbiguousIntent(customerPhone, body);
+      if (result.source !== 'escalation') await escalateAmbiguousIntent(customerPhone, body);
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Intent handlers � delegate to reschedule-service
+// Intent handlers � delegate to reschedule-service
 // ---------------------------------------------------------------------------
 
 /**
@@ -328,7 +370,7 @@ export async function sendHelpSms(customerPhone: string): Promise<void> {
 
 /**
  * Real: send an SMS telling the customer we couldn't find a booking for
- * their number. No escalation � this is an informative dead-end, not an
+ * their number. No escalation � this is an informative dead-end, not an
  * operational incident.
  */
 export async function sendNoMatchingBookingSms(customerPhone: string): Promise<void> {

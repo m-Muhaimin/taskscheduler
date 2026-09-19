@@ -10,7 +10,9 @@ const m = vi.hoisted(() => ({
   appendMessage: vi.fn(),
   resolveOrganizationIdByTwilioNumber: vi.fn(),
   createEscalation: vi.fn(),
-  parseIntent: vi.fn(),
+  classifyStep: vi.fn(),
+  createProvider: vi.fn(),
+  recordAiUsage: vi.fn(),
   getConversationByPhone: vi.fn(),
   sendSms: vi.fn(),
   initiateRescheduleFlow: vi.fn(),
@@ -35,8 +37,12 @@ vi.mock('../services/organization-service.js', () => ({
 vi.mock('../services/escalation-service.js', () => ({
   createEscalation: m.createEscalation,
 }));
-vi.mock('../services/intent-service.js', () => ({
-  parseIntent: m.parseIntent,
+vi.mock('@tradescheduler/ai', () => ({
+  classifyStep: m.classifyStep,
+  createProvider: m.createProvider,
+}));
+vi.mock('../services/ai-usage-service.js', () => ({
+  recordAiUsage: m.recordAiUsage,
 }));
 vi.mock('../services/conversation-service.js', () => ({
   createConversation: m.createConversation,
@@ -98,6 +104,14 @@ beforeEach(() => {
   m.findOrCreateConversation.mockResolvedValue({ id: 'conv-1', status: 'open' });
   m.appendMessage.mockResolvedValue({ id: 'msg-1' });
   m.resolveOrganizationIdByTwilioNumber.mockResolvedValue('org-1');
+  m.classifyStep.mockResolvedValue({
+    intentResult: { intent: 'unknown', confidence: 0 },
+    aiUsage: null,
+    source: 'escalation',
+    requestId: 'rid',
+  });
+  m.createProvider.mockReturnValue({ metadata: () => ({ name: 'openai' }) });
+  m.recordAiUsage.mockResolvedValue({});
   m.getConversationByPhone.mockResolvedValue(null);
   m.findBookingByPhone.mockResolvedValue({
     id: 'apt-1',
@@ -120,7 +134,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe('processInboundSms — CP03 wiring', () => {
+describe('processInboundSms ï¿½ CP03 wiring', () => {
   it('rejects a non-E.164 From with an escalation and never touches customers', async () => {
     const worker = await loadWorker();
 
@@ -146,7 +160,12 @@ describe('processInboundSms — CP03 wiring', () => {
 
   it('creates customer + conversation + message, then dispatches the intent', async () => {
     const worker = await loadWorker();
-    m.parseIntent.mockReturnValue({ intent: 'help', confidence: 1 });
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
 
     await worker.processInboundSms(job({
       From: '+15551234567',
@@ -177,12 +196,17 @@ describe('processInboundSms — CP03 wiring', () => {
     expect(m.createEscalation).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'processing_error' }),
     );
-    expect(m.parseIntent).not.toHaveBeenCalled();
+    expect(m.classifyStep).not.toHaveBeenCalled();
   });
 
     it('reschedule intent with no conversation state falls back to the most recent booking by phone', async () => {
     const worker = await loadWorker();
-    m.parseIntent.mockReturnValue({ intent: 'reschedule', confidence: 0.95 });
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'reschedule', confidence: 0.95 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
     m.getConversationByPhone.mockResolvedValue(null);
     m.findBookingByPhone.mockResolvedValue({ ...BOOKING, id: 'apt-byphone' });
 
@@ -208,7 +232,12 @@ describe('processInboundSms — CP03 wiring', () => {
 
   it('reschedule intent uses booking_id from existing conversation state when present', async () => {
     const worker = await loadWorker();
-    m.parseIntent.mockReturnValue({ intent: 'reschedule', confidence: 0.95 });
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'reschedule', confidence: 0.95 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
     m.getConversationByPhone.mockResolvedValue({ id: 'conv-9', bookingId: 'apt-fromstate' });
 
     await worker.processInboundSms(job({ From: '+15551234567', Body: 'RESCHEDULE', To: '+15559876543' }));
@@ -233,7 +262,12 @@ describe('processInboundSms — CP03 wiring', () => {
 
   it('sends no-matching-booking SMS when neither path finds a booking (no escalation)', async () => {
     const worker = await loadWorker();
-    m.parseIntent.mockReturnValue({ intent: 'reschedule', confidence: 0.95 });
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'reschedule', confidence: 0.95 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
     m.getConversationByPhone.mockResolvedValue(null);
     m.findBookingByPhone.mockResolvedValue(null);
 
@@ -249,7 +283,12 @@ describe('processInboundSms — CP03 wiring', () => {
 
   it('confirm success persists the reschedule and sends a confirmation SMS', async () => {
     const worker = await loadWorker();
-    m.parseIntent.mockReturnValue({ intent: 'confirm', confidence: 0.99 });
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'confirm', confidence: 0.99 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
     m.confirmReschedule.mockResolvedValue({
       success: true,
       booking: BOOKING,
@@ -285,7 +324,12 @@ describe('processInboundSms — CP03 wiring', () => {
 
   it('confirm dead-end (no conversation) gets no-matching-booking SMS', async () => {
     const worker = await loadWorker();
-    m.parseIntent.mockReturnValue({ intent: 'confirm', confidence: 0.99 });
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'confirm', confidence: 0.99 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
     m.confirmReschedule.mockResolvedValue({ success: false, error: 'No conversation found' });
 
     await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
@@ -300,7 +344,12 @@ describe('processInboundSms — CP03 wiring', () => {
 
   it('confirm failure (calendar error) sends a courtesy SMS, no booking update', async () => {
     const worker = await loadWorker();
-    m.parseIntent.mockReturnValue({ intent: 'confirm', confidence: 0.99 });
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'confirm', confidence: 0.99 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
     m.confirmReschedule.mockResolvedValue({ success: false, error: 'Calendar event creation failed: boom' });
 
     await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
@@ -316,7 +365,12 @@ describe('processInboundSms — CP03 wiring', () => {
 
   it('slot-choice with no offering conversation sends an invalid-choice SMS (no escalation)', async () => {
     const worker = await loadWorker();
-    m.parseIntent.mockReturnValue({ intent: 'slot-choice', confidence: 0.9 });
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'slot-choice', confidence: 0.9 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
     m.processSlotChoice.mockResolvedValue(null);
 
     await worker.processInboundSms(job({ From: '+15551234567', Body: '2', To: '+15559876543' }));
@@ -331,7 +385,12 @@ describe('processInboundSms — CP03 wiring', () => {
 
   it('slot-choice failure escalates as processing_error', async () => {
     const worker = await loadWorker();
-    m.parseIntent.mockReturnValue({ intent: 'slot-choice', confidence: 0.9 });
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'slot-choice', confidence: 0.9 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
     m.processSlotChoice.mockRejectedValue(new Error('state write failed'));
 
     await worker.processInboundSms(job({ From: '+15551234567', Body: '1', To: '+15559876543' }));
@@ -340,5 +399,112 @@ describe('processInboundSms — CP03 wiring', () => {
       expect.objectContaining({ type: 'processing_error', customerPhone: '+15551234567' }),
     );
     expect(m.sendSms).not.toHaveBeenCalled();
+  });
+
+  it('LLM path: records one ai-usage row and dispatches the reschedule flow', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'reschedule', confidence: 0.95 },
+      aiUsage: { tokensInput: 100, tokensOutput: 40, model: 'gpt-4o-mini' },
+      source: 'llm',
+      requestId: 'rid-llm',
+    });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'RESCHEDULE', To: '+15559876543' }));
+
+    // Ledger: exactly one row, org-scoped, with provider metadata + classify result.
+    expect(m.recordAiUsage).toHaveBeenCalledTimes(1);
+    expect(m.recordAiUsage).toHaveBeenCalledWith({
+      requestId: expect.any(String), // worker-generated UUID, not the mock's requestId
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      tokensInput: 100,
+      tokensOutput: 40,
+      source: 'llm',
+      organizationId: 'org-1',
+    });
+    // The LLM intent still dispatches through the normal reschedule path.
+    expect(m.initiateRescheduleFlow).toHaveBeenCalledWith(
+      'apt-1',
+      '+15551234567',
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(m.createEscalation).not.toHaveBeenCalled();
+  });
+
+  it('rule path: aiUsage null means NO ledger row, dispatch unchanged', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-rule',
+    });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'help', To: '+15559876543' }));
+
+    expect(m.recordAiUsage).not.toHaveBeenCalled();
+    expect(m.sendSms).toHaveBeenCalledTimes(1); // help SMS still dispatched
+  });
+
+  it('escalation source: exactly ONE escalation row, no ambiguous re-escalation', async () => {
+    const worker = await loadWorker();
+    // classifyStep's terminal fallback escalates internally then returns
+    // source 'escalation' with intent 'unknown'. Simulate that contract,
+    // including the internal onEscalate call with the placeholder phone.
+    m.classifyStep.mockImplementation(async (_provider, _ctx, onEscalate, _requestId) => {
+      await onEscalate({
+        type: 'ambiguous_intent',
+        customerPhone: 'unknown',
+        content: 'Inbound message could not be classified: "???"',
+      });
+      return {
+        intentResult: { intent: 'unknown', confidence: 0 },
+        aiUsage: null,
+        source: 'escalation',
+        requestId: 'rid-esc',
+      };
+    });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: '???', To: '+15559876543' }));
+
+    // The only escalation is the one classifyStep raised â€” the worker's
+    // onEscalate override swaps the fake "unknown" phone for the real one.
+    expect(m.createEscalation).toHaveBeenCalledTimes(1);
+    expect(m.createEscalation).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'ambiguous_intent', customerPhone: '+15551234567' }),
+    );
+    // The switch guard must NOT double-escalate; and no LLM ran, so no ledger row.
+    expect(m.recordAiUsage).not.toHaveBeenCalled();
+  });
+
+  it('recordAiUsage failure never kills the job: message still dispatches', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: { tokensInput: 100, tokensOutput: 40, model: 'gpt-4o-mini' },
+      source: 'llm',
+      requestId: 'rid-ledgerfail',
+    });
+    m.recordAiUsage.mockRejectedValue(new Error('ledger down'));
+
+    await expect(
+      worker.processInboundSms(job({ From: '+15551234567', Body: 'help', To: '+15559876543' })),
+    ).resolves.toBeUndefined();
+
+    // The ledger failed, but the classify result still dispatched normally.
+    expect(m.recordAiUsage).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
+    expect(m.createEscalation).not.toHaveBeenCalled();
   });
 });

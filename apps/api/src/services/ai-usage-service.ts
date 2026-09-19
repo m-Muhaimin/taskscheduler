@@ -4,9 +4,9 @@
  * Persists one row per LLM call — request_id, provider, model, token counts
  * and an estimated USD cost — so the observability checkpoint (P0.9) and cost
  * tracking have real numbers to work with. Recording only: nothing in this
- * file decides whether an LLM is called (that is classifyStep's job), and no
- * production wiring exists yet — the worker will call recordAiUsage() next to
- * classifyStep once Checkpoint 03+ hooks land.
+ * file decides whether an LLM is called (that is classifyStep's job).
+ * Wired in production since T12: worker/process-inbound-sms.ts calls
+ * recordAiUsage() next to classifyStep for every real LLM call.
  *
  * Follows the same env-free lazy-pool pattern as queue-service.ts.
  */
