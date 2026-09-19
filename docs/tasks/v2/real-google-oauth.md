@@ -142,3 +142,18 @@ record (CLAUDE.md hard rule).
 
 Test state: **all 238 service tests pass** (baseline 1 pre-existing failure fixed).
 Remaining baseline items unchanged: 2 tsc errors (RescheduleLogEntry, Escalation).
+
+
+---
+
+## Addendum 4 — Disconnect / reconnect round trip verified live (2026-09-19)
+
+- `DELETE /api/auth/google` (Bearer) → `{"ok":true}`; `/status` flipped
+  `{"connected":true,"calendarId":"primary"}` → `{"connected":false,"calendarId":null}`;
+  DB: `ts_google_credentials` rows → 0, `ts_tradespeople.google_calendar_id` → null.
+- Reconnect: user clicked Connect (prompt=consent re-asked) → `/status` back to
+  `{"connected":true,"calendarId":"primary"}`; DB: fresh credentials (access+refresh
+  tokens, scope `.../auth/calendar`, unexpired, calendar_id `primary`).
+- Live read via production auth path (`defaultAuth(userId, 'primary')` →
+  `auth.client.events.list`) returned the real calendar (12 upcoming events incl. the
+  smoke-test event `n1ntt40tv4c4ii1repgoap9c84`).
