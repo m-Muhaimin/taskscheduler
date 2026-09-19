@@ -7,7 +7,6 @@ import { ToastProvider } from "@/components/ui/toast";
 import { useEscape } from "@/lib/hooks";
 import { NavRail } from "./nav-rail";
 import { TopBar } from "./top-bar";
-import { EscalationBanner } from "./escalation-banner";
 
 interface ShellState {
   /** Mobile drawer open? (Always false at md+, where the sidebar is permanently visible.) */
@@ -80,7 +79,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           <NavRail />
           <div className="flex-1 min-w-0 flex flex-col" {...inertProps}>
             <TopBar />
-            <EscalationBanner />
             <main id="main" className="flex-1 px-5 md:px-8 py-5 md:py-7 max-w-[1400px] w-full mx-auto">
               {children}
             </main>

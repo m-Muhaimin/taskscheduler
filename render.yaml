@@ -1,19 +1,17 @@
 # ------------------------------------------------------------------
 # Render Blueprint — tradescheduler (RidgeLine)
 #
-# Provisioning: connect this repo in the Render Dashboard
-#   (https://dashboard.render.com/blueprints/new) after push.
-#
 # Services:
-#   ridgeline-api    — Express API (health /api/health)
+#   ridgeline-api    — Express API
 #   ridgeline-worker — SMS processing background worker
-#   ridgeline        — Next.js web app (proxies /api/* to the API)
+#   ridgeline        — Next.js web app
 #
-# SECRETS: all secret env vars use `sync: false` — Render prompts for
-# them in the Dashboard on first sync; they are NEVER written here.
-# See docs/deploy-render.md for the exact dashboard values.
+# Secrets are intentionally NOT stored in this file.
+# Configure them in Render Dashboard during the first Blueprint sync.
 # ------------------------------------------------------------------
+
 services:
+
   # ----------------------------------------------------------------
   # Express API
   # ----------------------------------------------------------------
@@ -21,72 +19,92 @@ services:
     name: ridgeline-api
     runtime: node
     region: oregon
+
     buildCommand: npm ci && npm run build --workspace=apps/api
     startCommand: npm start --workspace=apps/api
     preDeployCommand: npm run db:migrate --workspace=apps/api
+
     healthCheckPath: /api/health
+
     envVars:
-      # - key: DATABASE_URL  → Internal Database URL (paste from your
-      #   Render Postgres dpg-dan0l6h42hec73cp2s50-a dashboard; keep the
-      #   internal `dpg-...-a` host, NOT the .com external one)
       - key: DATABASE_URL
         sync: false
+
       - key: JWT_SECRET
         sync: false
-      # JWT_ISSUER defaults to 'tradescheduler' in code; keep it there.
+
       - key: TWILIO_ACCOUNT_SID
         sync: false
+
       - key: TWILIO_AUTH_TOKEN
         sync: false
+
       - key: TWILIO_PHONE_NUMBER
         sync: false
+
       - key: GOOGLE_CLIENT_ID
         sync: false
+
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-      # Must be https://<ridgeline-api onRender URL>/api/auth/google/callback
-      # — fill after first provision (the URL suffix is assigned by Render).
+
       - key: GOOGLE_REDIRECT_URI
         sync: false
 
+      - key: WEB_BASE_URL
+        value: https://ridgelineai.onrender.com
+
+
   # ----------------------------------------------------------------
-  # SMS processing worker (poll loop, same build as API)
+  # SMS processing worker
   # ----------------------------------------------------------------
   - type: worker
     name: ridgeline-worker
     runtime: node
     region: oregon
+
     buildCommand: npm ci && npm run build --workspace=apps/api
     startCommand: npm run worker:start --workspace=apps/api
     preDeployCommand: npm run db:migrate --workspace=apps/api
+
     envVars:
       - key: DATABASE_URL
         sync: false
+
+      - key: JWT_SECRET
+        sync: false
+
       - key: TWILIO_ACCOUNT_SID
         sync: false
+
       - key: TWILIO_AUTH_TOKEN
         sync: false
+
       - key: TWILIO_PHONE_NUMBER
         sync: false
+
       - key: GOOGLE_CLIENT_ID
         sync: false
+
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+
       - key: GOOGLE_REDIRECT_URI
         sync: false
 
+
   # ----------------------------------------------------------------
-  # Next.js web app — proxies /api/* to ridgeline-api
+  # Next.js web application
   # ----------------------------------------------------------------
   - type: web
     name: ridgeline
     runtime: node
     region: oregon
+
     buildCommand: npm ci && npm run build --workspace=apps/web
     startCommand: npm start --workspace=apps/web -- -p $PORT
+
     envVars:
-      # Copy the API service's public URL at provision time (validated
-      # pattern: envVarKey may reference Render-provided RENDER_EXTERNAL_URL)
       - key: API_BASE_URL
         fromService:
           name: ridgeline-api

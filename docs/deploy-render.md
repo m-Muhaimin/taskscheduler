@@ -34,6 +34,12 @@ before the API and worker start, so the schema is current on every deploy.
    - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — from your Google OAuth
      credentials.
    - `GOOGLE_REDIRECT_URI` — see step 3. Leave blank on first deploy.
+   - `WEB_BASE_URL` — **must be** `https://ridgelineai.onrender.com` (the
+     public web-app domain the OAuth flow redirects the browser back to after
+     consent). It is now pinned in `render.yaml`, but the **existing**
+     `ridgeline-api` service keeps its dashboard-set value — update it
+     manually in the Render dashboard and redeploy; a blueprint change alone
+     will not rewrite an already-provisioned service's env.
 
 3. **After the API service gets its URL** (first deploy assigns
    `https://ridgeline-api-<suffix>.onrender.com`), set on **both** `ridgeline-api`
