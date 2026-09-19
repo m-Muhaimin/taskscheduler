@@ -11,6 +11,7 @@
  * row — the SMS worker/service delivers later (matches queue-service pattern).
  */
 import { Pool } from 'pg';
+import { enqueue } from './queue-service.js';
 import type { InboxOfferedSlots } from './dashboard-service.js';
 
 // ---------------------------------------------------------------------------
@@ -118,18 +119,30 @@ export async function getInboxConversation(conversationId: string, orgId: string
  * approved suggestion; the SMS worker delivers it later — no SMS in dev).
  * The INSERT is org-guarded via EXISTS so a reply can never be queued against
  * a conversation belonging to another org, even if the route's pre-check and
- * this insert race.
+ * this insert race. T13: the returned row id is handed to the job queue as an
+ * `outbound_sms` job so the worker actually delivers the queued message.
  */
 export async function enqueueOutboundReply(conversationId: string, body: string, orgId: string): Promise<void> {
-  await getPool().query(
+  const { rows } = await getPool().query<{ id: string }>(
     `insert into public.${messagesTable()} (conversation_id, provider, direction, body, status)
      select $1, 'manual', 'outbound', $2, 'queued'
      where exists (
        select 1 from public.${conversationsTable()} c
        where c.id = $1 and c.organization_id = $3
-     )`,
+     )
+     returning id`,
     [conversationId, body, orgId],
   );
+  const row = rows[0];
+  if (!row) {
+    // Org guard rejected the insert (other-org race): nothing was queued, so
+    // nothing to deliver — same silent no-op as before T13.
+    return;
+  }
+  // If the enqueue fails AFTER the row insert, rethrow: the route returns 500
+  // and the caller sees the reply never completed (no swallow — a queued row
+  // without a job is exactly the bug T13 closes).
+  await enqueue({ type: 'outbound_sms', payload: { messageId: row.id } });
 }
 
 /**

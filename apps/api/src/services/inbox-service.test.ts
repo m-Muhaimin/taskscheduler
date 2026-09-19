@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ query: vi.fn() }));
+const mocks = vi.hoisted(() => ({ query: vi.fn(), enqueue: vi.fn() }));
 
 vi.mock('pg', () => ({ Pool: class MockPool { query = mocks.query; } }));
+vi.mock('./queue-service.js', () => ({ enqueue: mocks.enqueue }));
 
 async function loadService() {
   return await import('./inbox-service.js');
@@ -15,6 +16,7 @@ async function loadDashboardService() {
 beforeEach(() => {
   process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
   mocks.query.mockReset();
+  mocks.enqueue.mockReset();
 });
 
 afterEach(() => {
@@ -86,10 +88,11 @@ describe('getInboxConversation (T10 org-scoped lookup)', () => {
   });
 });
 
-describe('enqueueOutboundReply (T10)', () => {
-  it('inserts a queued manual outbound message org-guarded via EXISTS', async () => {
+describe('enqueueOutboundReply (T10 + T13 job enqueue)', () => {
+  it('inserts a queued manual outbound message org-guarded via EXISTS and enqueues the outbound_sms job', async () => {
     const { enqueueOutboundReply } = await loadService();
-    mocks.query.mockResolvedValue({ rows: [] });
+    mocks.query.mockResolvedValue({ rows: [{ id: 'msg-1' }] });
+    mocks.enqueue.mockResolvedValue({ id: 'job-1', type: 'outbound_sms', payload: { messageId: 'msg-1' } });
 
     await enqueueOutboundReply('conv-1', 'Sure, Tuesday works.', 'org-1');
 
@@ -97,9 +100,24 @@ describe('enqueueOutboundReply (T10)', () => {
     expect(sql).toContain('insert into public.rl_messages');
     expect(sql).toContain(`provider, direction, body, status`);
     expect(sql).toContain(`'manual', 'outbound', $2, 'queued'`);
+    expect(sql).toContain('returning id');
     expect(sql).toContain('where exists');
     expect(sql).toContain(`c.id = $1 and c.organization_id = $3`);
     expect(params).toEqual(['conv-1', 'Sure, Tuesday works.', 'org-1']);
+
+    // T13: the returned row id drives the delivery job.
+    expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueue).toHaveBeenCalledWith({ type: 'outbound_sms', payload: { messageId: 'msg-1' } });
+  });
+
+  it('does NOT enqueue a job when the org guard rejects the insert (no row returned)', async () => {
+    const { enqueueOutboundReply } = await loadService();
+    mocks.query.mockResolvedValue({ rows: [] });
+
+    await enqueueOutboundReply('conv-foreign', 'not yours', 'org-1');
+
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 });
 

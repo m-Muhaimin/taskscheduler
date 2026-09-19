@@ -2,6 +2,7 @@ import '../env.js';
 import { complete, dequeue, fail } from '../services/queue-service.js';
 import type { QueueJob } from '../services/queue-service.js';
 import { processInboundSms } from './process-inbound-sms.js';
+import { processOutboundSms } from './process-outbound-sms.js';
 
 /**
  * Worker process (build-sequence.md Step 4): polls dequeue() in a loop,
@@ -13,6 +14,7 @@ const POLL_INTERVAL_MS = Number(process.env.JOB_POLL_INTERVAL_MS ?? 1000);
 
 const handlers: Record<string, (job: QueueJob) => Promise<void>> = {
   inbound_sms: processInboundSms,
+  outbound_sms: processOutboundSms,
 };
 
 let running = true;
