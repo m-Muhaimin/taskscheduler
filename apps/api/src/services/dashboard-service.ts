@@ -88,6 +88,9 @@ function messagesTable(): string {
 function conversationStatesTable(): string {
   return process.env.CONVERSATION_STATES_TABLE ?? 'rl_conversation_states';
 }
+function organizationMembersTable(): string {
+  return process.env.ORGANIZATION_MEMBERS_TABLE ?? 'rl_organization_members';
+}
 function escalationsTable(): string {
   return process.env.ESCALATIONS_TABLE ?? 'rl_escalations';
 }
@@ -274,8 +277,7 @@ export async function getSummary(orgId: string, tz: string): Promise<DashboardSu
 q<{ completed: number; total: number }>(
          `select count(*) filter (where s.state = 'completed')::int as completed, count(*)::int as total
           from public.${conversationStatesTable()} s
-          join public.${conversationsTable()} c on c.id = s.conversation_id
-          where c.organization_id = $1`,
+          where s.user_id in (select user_id from public.${organizationMembersTable()} where organization_id = $1)`,
          [orgId],
        ),
       q<{ d: string; completed: number; total: number }>(
@@ -283,8 +285,7 @@ q<{ completed: number; total: number }>(
                 count(*) filter (where s.state = 'completed')::int as completed,
                 count(*)::int as total
          from public.${conversationStatesTable()} s
-         join public.${conversationsTable()} c on c.id = s.conversation_id
-         where c.organization_id = $1
+         where s.user_id in (select user_id from public.${organizationMembersTable()} where organization_id = $1)
            and s.created_at >= ($3::date at time zone $2)
            and s.created_at < (($4::date + 1) at time zone $2)
          group by 1`,
@@ -580,7 +581,7 @@ export async function getInboxItems(orgId: string, tz: string, limit: number): P
      left join lateral (
        select s.state, s.offered_slots, s.escalation_reason
        from public.${conversationStatesTable()} s
-       where s.conversation_id = c.id
+       where s.phone = cu.phone
        order by s.created_at desc
        limit 1
      ) st on true
@@ -784,15 +785,16 @@ export async function getAnalytics(orgId: string, tz: string): Promise<Dashboard
       q<{ booked: number; escalated: number; dropped: number }>(
         `select
            (select count(*)::int from public.${conversationStatesTable()} s
-             join public.${conversationsTable()} c on c.id = s.conversation_id
-             where c.organization_id = $1 and s.state = 'completed') as booked,
+             where s.user_id in (select user_id from public.${organizationMembersTable()} where organization_id = $1)
+               and s.state = 'completed') as booked,
            (select count(*)::int from public.${conversationStatesTable()} s
-             join public.${conversationsTable()} c on c.id = s.conversation_id
-             where c.organization_id = $1 and s.state = 'escalated') as escalated,
+             where s.user_id in (select user_id from public.${organizationMembersTable()} where organization_id = $1)
+               and s.state = 'escalated') as escalated,
            (select count(*)::int from public.${conversationsTable()} c
              where c.organization_id = $1 and c.status = 'closed'
                and not exists (select 1 from public.${conversationStatesTable()} s
-                 where s.conversation_id = c.id and s.state = 'completed')) as dropped`,
+                 join public.${customersTable()} cu on cu.phone = s.phone and cu.id = c.customer_id
+                 where s.state = 'completed')) as dropped`,
         [orgId],
       ),
       // revenueByDay — confirmed deposit sum by local day
@@ -837,8 +839,7 @@ export async function getAnalytics(orgId: string, tz: string): Promise<Dashboard
                   count(*) filter (where s.state = 'completed')::int as completed,
                   count(*)::int as total
            from public.${conversationStatesTable()} s
-           join public.${conversationsTable()} c on c.id = s.conversation_id
-           where c.organization_id = $3
+           where s.user_id in (select user_id from public.${organizationMembersTable()} where organization_id = $3)
              and s.created_at >= ($1::date at time zone $4)
              and s.created_at < (($2::date + 1) at time zone $4)
            group by 1
