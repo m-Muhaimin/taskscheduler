@@ -10,6 +10,7 @@ const m = vi.hoisted(() => ({
   findOrCreateConversation: vi.fn(),
   appendMessage: vi.fn(),
   resolveOrganizationIdByTwilioNumber: vi.fn(),
+  resolveStaffByPhone: vi.fn(),
   createEscalation: vi.fn(),
   classifyStep: vi.fn(),
   createProvider: vi.fn(),
@@ -37,6 +38,9 @@ vi.mock('../services/conversation-domain.js', () => ({
 }));
 vi.mock('../services/organization-service.js', () => ({
   resolveOrganizationIdByTwilioNumber: m.resolveOrganizationIdByTwilioNumber,
+}));
+vi.mock('../services/staff-phone-service.js', () => ({
+  resolveStaffByPhone: m.resolveStaffByPhone,
 }));
 vi.mock('../services/escalation-service.js', () => ({
   createEscalation: m.createEscalation,
@@ -124,6 +128,7 @@ beforeEach(() => {
   m.findOrCreateConversation.mockResolvedValue({ id: 'conv-1', status: 'open' });
   m.appendMessage.mockResolvedValue({ id: 'msg-1' });
   m.resolveOrganizationIdByTwilioNumber.mockResolvedValue('org-1');
+  m.resolveStaffByPhone.mockResolvedValue(null); // T16: default non-staff
   m.classifyStep.mockResolvedValue({
     intentResult: { intent: 'unknown', confidence: 0 },
     aiUsage: null,
@@ -914,5 +919,75 @@ describe('processInboundSms � CP03 wiring', () => {
       );
       expect(m.createEscalation).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('processInboundSms: T16 staff-phone operator flow', () => {
+  it('staff From -> staff_sms escalation + ack, NO customer row, NO classify', async () => {
+    const worker = await loadWorker();
+    m.resolveStaffByPhone.mockResolvedValue({
+      tradespersonId: 'tp-1',
+      email: '__VG_EMAIL_staff1__',
+    });
+
+    await worker.processInboundSms(job({
+      From: '+15551234567',
+      Body: 'hi team, can you cover my shift',
+      To: '+15559876543',
+    }));
+
+    // Operator flow: escalation surface + ack, job completes.
+    expect(m.resolveStaffByPhone).toHaveBeenCalledWith('+15551234567', 'org-1');
+    expect(m.createEscalation).toHaveBeenCalledTimes(1);
+    expect(m.createEscalation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'staff_sms',
+        customerPhone: '+15551234567',
+        content: expect.stringContaining('[staff sms from tp-1]'),
+      }),
+    );
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '+15551234567' }),
+    );
+    // Hard invariant: staff messages never enter the customer pipeline.
+    expect(m.findOrCreateCustomer).not.toHaveBeenCalled();
+    expect(m.findOrCreateConversation).not.toHaveBeenCalled();
+    expect(m.appendMessage).not.toHaveBeenCalled();
+    expect(m.classifyStep).not.toHaveBeenCalled();
+  });
+
+  it('non-staff From -> existing customer flow runs unchanged (regression)', async () => {
+    const worker = await loadWorker();
+    // Default beforeEach: resolveStaffByPhone -> null, verified customer.
+
+    await worker.processInboundSms(job({
+      From: '+15551234567',
+      Body: 'help',
+      To: '+15559876543',
+      MessageSid: 'SM1234567890',
+    }));
+
+    expect(m.resolveStaffByPhone).toHaveBeenCalledWith('+15551234567', 'org-1');
+    expect(m.findOrCreateCustomer).toHaveBeenCalledWith('org-1', '+15551234567');
+    expect(m.classifyStep).toHaveBeenCalled();
+    expect(m.createEscalation).not.toHaveBeenCalled();
+  });
+
+  it('staff of ANOTHER org -> treated as customer (org-scoped resolution)', async () => {
+    const worker = await loadWorker();
+    // resolveStaffByPhone already enforces organization_id = $2; at the worker
+    // level a cross-org staff number resolves to null and hits the customer
+    // flow exactly like an unknown number.
+    m.resolveStaffByPhone.mockResolvedValue(null);
+
+    await worker.processInboundSms(job({
+      From: '+15551234567',
+      Body: 'hello',
+      To: '+15559876543',
+    }));
+
+    expect(m.resolveStaffByPhone).toHaveBeenCalledWith('+15551234567', 'org-1');
+    expect(m.findOrCreateCustomer).toHaveBeenCalledWith('org-1', '+15551234567');
+    expect(m.createEscalation).not.toHaveBeenCalled();
   });
 });

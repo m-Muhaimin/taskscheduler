@@ -17,6 +17,7 @@ import type { Customer } from '../services/conversation-domain.js';
 import { issueCode, verifyCode, issueFlowCode, verifyFlowCode, sha256Hex } from '../services/verification-service.js';
 import type { ConversationState } from '@tradescheduler/shared';
 import { resolveOrganizationIdByTwilioNumber } from '../services/organization-service.js';
+import { resolveStaffByPhone } from '../services/staff-phone-service.js';
 import { findBookingById, findUserProfile, findBookingByPhone, updateBookingTimes, findUserBookingsInWindow } from '../services/booking-service.js';
 import { recordAiUsage } from '../services/ai-usage-service.js';
 import type { AiUsageSource } from '../services/ai-usage-service.js';
@@ -77,6 +78,41 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
     });
     return;
   }
+
+  // T16: staff-phone recognition. If the From number belongs to a member of
+  // the RESOLVED org, route to the operator flow instead of the customer flow:
+  // one escalation row (surfaces on the existing dashboard escalations list)
+  // + a short staff ack. NO customer row, NO conversation/message write, NO
+  // classify. Staff of ANOTHER org are still customers of THIS org — the
+  // resolution query is org-scoped. On resolution/store failure: log, and if
+  // the number was NOT resolved as staff the customer flow below handles it
+  // (its own escalation posture stays untouched).
+  let staffResolved = false;
+  try {
+    const staff = await resolveStaffByPhone(customerPhone, organizationId);
+    if (staff) {
+      staffResolved = true;
+      await createEscalation({
+        type: 'staff_sms',
+        customerPhone,
+        content: `[staff sms from ${staff.tradespersonId}] ${body}`,
+      });
+      // Staff ack — default ON; dry-run friendly (TWILIO_SMS_DRY_RUN logs, does
+      // not send). Ack failure must not fail the job: the escalation row above
+      // is the source of truth.
+      try {
+        await sendSms({
+          to: customerPhone,
+          body: 'Message logged to your dashboard — reply there.',
+        });
+      } catch (ackErr) {
+        console.error('[worker] staff ack SMS failed:', ackErr);
+      }
+    }
+  } catch (err) {
+    console.error('[worker] staff-phone flow failed:', err);
+  }
+  if (staffResolved) return;
 
   // CP03 spec H.3-H.5: customer + conversation + message layer in front of
   // the existing dispatch. Failures here escalate but do not kill the job loop.

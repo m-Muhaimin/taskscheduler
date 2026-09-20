@@ -65,7 +65,8 @@ create table if not exists public.rl_escalations (
                'calendar_api_failure',
                'sms_delivery_failure',
                'processing_error',
-               'customer_escalation'
+               'customer_escalation',
+               'staff_sms'
              )),
   customer_phone  text not null,
   content    text,
@@ -158,6 +159,8 @@ create table if not exists public.rl_tradespeople (
   password_hash text not null,
   display_name  text not null
                 check (length(display_name) between 1 and 80),
+  phone         text
+                check (phone is null or phone ~ '^\+?[1-9][0-9]{1,14}$'),
   created_at    timestamptz not null default now()
 );
 
@@ -166,6 +169,9 @@ comment on table public.rl_tradespeople is
 
 create unique index if not exists rl_tradespeople_email_idx
   on public.rl_tradespeople (email);
+
+create unique index if not exists rl_tradespeople_phone_idx
+  on public.rl_tradespeople (phone);
 
 alter table public.rl_tradespeople enable row level security;
 revoke all on public.rl_tradespeople from anon, authenticated;

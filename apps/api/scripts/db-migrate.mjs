@@ -31,6 +31,7 @@ const MIGRATIONS = [
   "010-customer-verification.sql",
   "011-confirmation-codes.sql",
   "012-assistant-escalation-type.sql",
+  "013-staff-phone.sql",
 ];
 
 const connectionString = process.env.DATABASE_URL;
