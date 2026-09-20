@@ -254,12 +254,23 @@ export type Escalation = {
   resolvedAt: IsoString | null;
 };
 
-/** §2.9 — GET /api/dashboard/escalations response body. */
+/** §2.9 — GET /api/dashboard/escalations response body. `escalations` carries
+ *  display-ready EscalationDto rows. */
 export type EscalationListResponse = {
-  escalations: Escalation[];
+  escalations: EscalationDto[];
   total: number;
   page: number;
   pageSize: number;
+};
+
+/** §2.9 + surface tasks — an escalation row with display-ready fields. */
+export type EscalationDto = Escalation & {
+  /** Human label for the escalation type (server-formatted, e.g. "Staff message"). */
+  typeLabel: string;
+  /** Org-timezone absolute timestamp, e.g. "Sep 18, 3:15 PM". */
+  createdAtDisplay: string;
+  /** Org-timezone absolute timestamp; null until resolved. */
+  resolvedAtDisplay: string | null;
 };
 
 /** §2.9 — GET /api/dashboard/bookings/:bookingId/reschedule-history response body. */
@@ -382,7 +393,7 @@ export type MetricCardDto = {
 };
 
 export type InboxItemState = 'attention' | 'active' | 'handled';
-export type InboxChannel = 'SMS' | 'Voice' | 'Web';
+export type InboxChannel = 'SMS' | 'Voice' | 'Web' | 'WhatsApp';
 
 export type InboxItemDto = {
   id: string;
@@ -466,6 +477,40 @@ export type DashboardCustomersResponse = {
   customers: CustomerDto[];
 };
 
+/** Delivery state of one outbound message (mirrors the rl_outbound_messages status CHECK). */
+export type MessageDeliveryStatus =
+  | 'queued'
+  | 'sent'
+  | 'delivered'
+  | 'failed'
+  | 'retried'
+  | 'escalated'
+  | 'blocked_optin';
+
+/** One row of the dashboard Messages (delivery-ledger) table. */
+export type MessageRowDto = {
+  id: string;
+  toPhone: string;
+  body: string;
+  channel: Channel;
+  /** Human label for the outbound kind; null when the kind is unset. */
+  kindLabel: string | null;
+  status: MessageDeliveryStatus;
+  statusLabel: string;
+  errorCode: string | null;
+  messageSid: string | null;
+  createdAt: IsoString;
+  createdAtDisplay: string;
+};
+
+/** §GET /api/dashboard/messages response body. */
+export type MessagesListResponse = {
+  messages: MessageRowDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
 export type OutcomeDto = {
   label: string;    // e.g. "Booked", "Escalated", "Dropped"
   pct: number;      // 0-100
@@ -544,3 +589,19 @@ export interface AutomationSettings {
 export interface DashboardAutomationResponse {
   automation: AutomationSettings;
 }
+
+/** READ-ONLY presence readout for WhatsApp fallback config (never carries values). */
+export type MessagingConfigStatusDto = {
+  whatsappNumberConfigured: boolean;
+  statusCallbackBaseUrlConfigured: boolean;
+  /** E.164 country codes from WHATSAPP_FALLBACK_COUNTRIES (default ['+880']). */
+  fallbackCountries: string[];
+  genericTemplateConfigured: boolean;
+  /** Per-kind WHATSAPP_TEMPLATE_<KIND_UPPER_SNAKE> presence. */
+  templateConfigured: Record<MessagingKind, boolean>;
+};
+
+/** §GET /api/dashboard/settings/messaging response body. */
+export type DashboardMessagingStatusResponse = {
+  messaging: MessagingConfigStatusDto;
+};

@@ -12,7 +12,9 @@ import type {
   DashboardJobsResponse,
   DashboardScheduleResponse,
   DashboardSummaryResponse,
+  EscalationListResponse,
   InboxActionResponse,
+  MessagesListResponse,
 } from "@tradescheduler/shared";
 
 /**
@@ -101,6 +103,14 @@ export function getJobs(): Promise<DashboardJobsResponse | NoOrganization | type
 
 export function getCustomers(): Promise<DashboardCustomersResponse | NoOrganization | typeof SESSION_EXPIRED> {
   return request<DashboardCustomersResponse>("/api/dashboard/customers");
+}
+
+export function getEscalations(): Promise<EscalationListResponse | NoOrganization | typeof SESSION_EXPIRED> {
+  return request<EscalationListResponse>("/api/dashboard/escalations");
+}
+
+export function getMessages(): Promise<MessagesListResponse | NoOrganization | typeof SESSION_EXPIRED> {
+  return request<MessagesListResponse>("/api/dashboard/messages");
 }
 
 export function getAnalytics(): Promise<DashboardAnalyticsResponse | NoOrganization | typeof SESSION_EXPIRED> {

@@ -561,6 +561,7 @@ const CHANNEL_LABEL: Record<string, InboxChannel> = {
   sms: 'SMS',
   voice: 'Voice',
   web: 'Web',
+  whatsapp: 'WhatsApp',
 };
 
 /**

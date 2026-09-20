@@ -44,3 +44,30 @@ export interface StatItem {
   label: string;
   tone?: "default" | "success" | "danger";
 }
+
+export interface EscalationItem {
+  id: string;
+  type: string;
+  typeLabel: string;
+  customerPhone: string;
+  content: string | null;
+  status: "pending" | "resolved";
+  createdAt: string;
+  createdAtDisplay: string;
+  resolvedAt: string | null;
+  resolvedAtDisplay: string | null;
+}
+
+export interface MessageRow {
+  id: string;
+  toPhone: string;
+  body: string;
+  channel: "sms" | "whatsapp";
+  kindLabel: string | null;
+  status: "queued" | "sent" | "delivered" | "failed" | "retried" | "escalated" | "blocked_optin";
+  statusLabel: string;
+  errorCode: string | null;
+  messageSid: string | null;
+  createdAt: string;
+  createdAtDisplay: string;
+}

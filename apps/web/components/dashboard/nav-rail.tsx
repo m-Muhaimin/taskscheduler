@@ -9,6 +9,8 @@ import {
   CalendarDays,
   Briefcase,
   Users,
+  AlertTriangle,
+  MessageSquareText,
   BarChart3,
   Settings,
   X,
@@ -32,10 +34,12 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/schedule", label: "Schedule", icon: CalendarDays },
   { href: "/dashboard/jobs", label: "Jobs", icon: Briefcase },
   { href: "/dashboard/customers", label: "Customers", icon: Users },
+  { href: "/dashboard/escalations", label: "Escalations", icon: AlertTriangle },
 ];
 
 const NAV_ITEMS_SECONDARY: NavItem[] = [
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/messages", label: "Messages", icon: MessageSquareText },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

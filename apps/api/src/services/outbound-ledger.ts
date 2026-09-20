@@ -21,7 +21,7 @@
  * same SID (rare, contradictory) is still recorded.
  */
 import { Pool } from 'pg';
-import type { Channel, MessagingKind } from '../types.js';
+import type { Channel, MessageDeliveryStatus, MessageRowDto, MessagingKind } from '../types.js';
 
 export type OutboundStatus =
   | 'queued'
@@ -216,4 +216,122 @@ export async function getByMessageSid(sid: string): Promise<OutboundLedgerRow | 
     [sid],
   );
   return rows[0] ? toRow(rows[0]) : null;
+}
+
+/** Human label per outbound kind (all 13 MessagingKind values). */
+export const MESSAGE_KIND_LABEL: Record<import('../types.js').MessagingKind, string> = {
+  booking_confirmation: 'Booking confirmation',
+  reschedule_offer: 'Reschedule offer',
+  slot_invalid: 'Slot invalid',
+  no_availability: 'No availability',
+  no_matching_booking: 'No matching booking',
+  verification_code: 'Verification code',
+  confirm_code: 'Confirm code',
+  number_verified: 'Number verified',
+  code_mismatch: 'Code mismatch',
+  confirm_failed: 'Confirmation failed',
+  help: 'Help',
+  missed_call_callback: 'Missed call callback',
+  staff_ack: 'Staff ack',
+};
+
+/** Human label per delivery status (all 7). */
+export const MESSAGE_STATUS_LABEL: Record<MessageDeliveryStatus, string> = {
+  queued: 'Queued',
+  sent: 'Sent',
+  delivered: 'Delivered',
+  failed: 'Failed',
+  retried: 'Retried',
+  escalated: 'Escalated',
+  blocked_optin: 'Blocked (no opt-in)',
+};
+
+/** Relative time: "Xs ago" < 60s, "Xm ago" < 60m, "Xh ago" < 24h, "Yesterday" < 48h, else org-tz "Sep 12". */
+export function formatRelativeDisplay(iso: string, tz: string, nowMs: number): string {
+  const diffSec = Math.floor((nowMs - new Date(iso).getTime()) / 1000);
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffHr < 48) return 'Yesterday';
+  return new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: 'numeric' }).format(new Date(iso));
+}
+
+/** Map a ledger row to the wire MessageRowDto. Status cast: OutboundStatus and
+ *  MessageDeliveryStatus share the same 7 literals. */
+export function toMessageRowDto(row: OutboundLedgerRow, tz: string, nowMs: number): MessageRowDto {
+  return {
+    id: row.id,
+    toPhone: row.toPhone,
+    body: row.body,
+    channel: row.channel,
+    kindLabel: row.kind ? (MESSAGE_KIND_LABEL[row.kind] ?? row.kind) : null,
+    status: row.status as MessageDeliveryStatus,
+    statusLabel: MESSAGE_STATUS_LABEL[row.status as MessageDeliveryStatus] ?? row.status,
+    errorCode: row.errorCode,
+    messageSid: row.messageSid,
+    createdAt: row.createdAt,
+    createdAtDisplay: formatRelativeDisplay(row.createdAt, tz, nowMs),
+  };
+}
+
+export interface GetOutboundMessagesOptions {
+  channel?: Channel;
+  status?: MessageDeliveryStatus;
+  page?: number;
+  pageSize?: number;
+  timezone: string;
+}
+
+/**
+ * Org-scoped read of the outbound ledger, newest first, with the total row
+ * count matching the same filters. Optional channel/status filters append
+ * params in that order; page/pageSize default 1/20 with pageSize clamped to
+ * 1..100 and page >= 1 (the dashboard route clamps again). The Messages
+ * surface displays rows via toMessageRowDto (kind/status labels + relative
+ * createdAtDisplay rendered in the org timezone).
+ */
+export async function getOutboundMessages(
+  orgId: string,
+  opts: GetOutboundMessagesOptions,
+): Promise<{ messages: MessageRowDto[]; total: number }> {
+  const params: unknown[] = [orgId];
+  const whereParts = ['organization_id = $1'];
+  if (opts.channel) {
+    params.push(opts.channel);
+    whereParts.push(`channel = $${params.length}`);
+  }
+  if (opts.status) {
+    params.push(opts.status);
+    whereParts.push(`status = $${params.length}`);
+  }
+  const whereSql = whereParts.join(' and ');
+
+  const page = Math.max(1, Math.floor(opts.page ?? 1));
+  const pageSize = Math.min(100, Math.max(1, Math.floor(opts.pageSize ?? 20)));
+  const offset = (page - 1) * pageSize;
+
+  const pool = getPool();
+  const [countResult, rowsResult] = await Promise.all([
+    pool.query<{ total: number }>(
+      `select count(*)::int as total from public.${tableName()}
+        where ${whereSql}`,
+      [...params],
+    ),
+    pool.query<OutboundRow>(
+      `${SELECT_BY}
+         from public.${tableName()}
+        where ${whereSql}
+        order by created_at desc
+        limit $${params.length + 1} offset $${params.length + 2}`,
+      [...params, pageSize, offset],
+    ),
+  ]);
+
+  const nowMs = Date.now();
+  const messages = rowsResult.rows.map((row) =>
+    toMessageRowDto(toRow(row), opts.timezone, nowMs),
+  );
+  return { messages, total: countResult.rows[0]?.total ?? 0 };
 }

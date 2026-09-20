@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { escalationsRouter } from './escalations.js';
+import { messagesRouter } from './messages.js';
 import { bookingsRouter } from './bookings/[bookingId]/reschedule-history.js';
 import { summaryRouter } from './summary.js';
 import { inboxRouter } from './inbox.js';
@@ -20,6 +21,7 @@ import { settingsRouter } from './settings.js';
  *  - GET  /api/dashboard/analytics
  *  - GET/PATCH /api/dashboard/settings/automation      (T11)
  *  - GET  /api/dashboard/escalations
+ *  - GET  /api/dashboard/messages
  *  - GET  /api/dashboard/bookings/:bookingId/reschedule-history
  *  All are JWT-protected (Bearer token in Authorization header).
  */
@@ -32,5 +34,6 @@ export function mountDashboardRoutes(app: import('express').Express): void {
   app.use('/api/dashboard/analytics', analyticsRouter);
   app.use('/api/dashboard/settings', settingsRouter);
   app.use('/api/dashboard/escalations', escalationsRouter);
+  app.use('/api/dashboard/messages', messagesRouter);
   app.use('/api/dashboard/bookings', bookingsRouter);
 }
