@@ -18,12 +18,18 @@ const AUTH_ERROR = "Sign in to use RidgeLine Assistant.";
 /** Extra bubble appended to the thread after an escalated turn. */
 const ESCALATED_NOTE = "I've flagged this for follow-up.";
 
+/** Typing effect pacing — ~2 chars every 16ms reads as natural typing. */
+const TYPING_TICK_MS = 16;
+const TYPING_CHARS_PER_TICK = 2;
+
 export function RidgeLineAssistant() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<AssistantMessage[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Reply being revealed by the typing effect; null when idle or done. */
+  const [pending, setPending] = useState<{ full: string; shown: number; escalated: boolean } | null>(null);
 
   const launcherRef = useRef<HTMLButtonElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -44,7 +50,29 @@ export function RidgeLineAssistant() {
   // Keep the newest message in view.
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, error, open]);
+  }, [messages, error, open, pending]);
+
+  // Typing effect: reveal pending.full progressively; when complete, commit
+  // the bubble (plus the escalated note) to the thread and unlock the composer.
+  useEffect(() => {
+    if (!pending) return;
+    if (pending.shown >= pending.full.length) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: pending.full },
+        ...(pending.escalated ? [{ role: "assistant" as const, content: ESCALATED_NOTE }] : []),
+      ]);
+      setPending(null);
+      setBusy(false);
+      return;
+    }
+    const id = window.setInterval(() => {
+      setPending((p) =>
+        p ? { ...p, shown: Math.min(p.full.length, p.shown + TYPING_CHARS_PER_TICK) } : p,
+      );
+    }, TYPING_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [pending]);
 
   async function submit() {
     const content = input.trim();
@@ -65,19 +93,16 @@ export function RidgeLineAssistant() {
       });
       if (!res.ok) {
         setError(res.status === 401 ? AUTH_ERROR : NETWORK_ERROR);
+        setBusy(false);
         return;
       }
       const data = (await res.json()) as AssistantChatResponse;
-      const reply: AssistantMessage = { role: "assistant", content: data.reply };
-      setMessages((prev) => [
-        ...prev,
-        reply,
-        ...(data.escalated ? [{ role: "assistant" as const, content: ESCALATED_NOTE }] : []),
-      ]);
+      // Reveal the reply with the typing effect; busy stays true until the
+      // reveal commits (busy && !pending shows the "typing…" hint).
+      setPending({ full: data.reply, shown: 0, escalated: data.escalated });
     } catch {
       // network failure / non-JSON body — keep the widget usable, message stays in the thread
       setError(NETWORK_ERROR);
-    } finally {
       setBusy(false);
     }
   }
@@ -137,6 +162,15 @@ export function RidgeLineAssistant() {
                 {m.content}
               </div>
             ))}
+            {pending && (
+              <div
+                aria-hidden="true"
+                className="max-w-[80%] whitespace-pre-wrap rounded-xl bg-surface-2 px-3 py-2 text-[13px] leading-snug text-ink"
+              >
+                {pending.full.slice(0, pending.shown)}
+                <span className="ml-0.5 inline-block h-[0.9em] w-[2px] animate-pulse bg-ink-muted align-middle" />
+              </div>
+            )}
             {error && (
               <div className="max-w-[80%] whitespace-pre-wrap rounded-xl bg-surface-2 px-3 py-2 text-[13px] leading-snug text-danger">
                 {error}
@@ -144,7 +178,7 @@ export function RidgeLineAssistant() {
             )}
           </div>
 
-          {busy && (
+          {busy && !pending && (
             <p className="shrink-0 px-4 py-1.5 text-[11.5px] text-ink-muted" aria-live="polite">
               RidgeLine is typing…
             </p>
