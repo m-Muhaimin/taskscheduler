@@ -1,5 +1,6 @@
 import express from 'express';
 import { twilioWebhooksRouter } from './routes/twilio-webhooks.js';
+import { twilioStatusRouter } from './routes/twilio-status.js';
 import { authRouter } from './routes/auth.js';
 import { googleOauthRouter } from './routes/google-oauth.js';
 import { mountDashboardRoutes } from './routes/dashboard/index.js';
@@ -19,6 +20,7 @@ export function createApp(): express.Express {
   app.use('/api/auth', authRouter);
   app.use('/api/workspace', workspaceRouter);
   app.use('/api/twilio/webhooks', twilioWebhooksRouter);
+  app.use('/api/twilio/webhooks', twilioStatusRouter); // POST /status — delivery reports (T18)
   mountDashboardRoutes(app);
   app.use('/api/assistant', assistantRouter); // before the health route / any fallthrough
 

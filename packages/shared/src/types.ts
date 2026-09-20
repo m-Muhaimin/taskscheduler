@@ -14,6 +14,27 @@ export type IsoString = string;
  */
 export type Channel = 'sms' | 'whatsapp';
 
+/**
+ * Outbound message kinds (T18). Every tracked outbound SMS/WhatsApp message
+ * carries one of these on its rl_outbound_messages ledger row (`kind`); the
+ * WhatsApp fallback engine resolves the Twilio content-template SID from it
+ * (`WHATSAPP_TEMPLATE_<KIND>` env, upper-snake).
+ */
+export type MessagingKind =
+  | 'booking_confirmation'
+  | 'reschedule_offer'
+  | 'slot_invalid'
+  | 'no_availability'
+  | 'no_matching_booking'
+  | 'verification_code'
+  | 'confirm_code'
+  | 'number_verified'
+  | 'code_mismatch'
+  | 'confirm_failed'
+  | 'help'
+  | 'missed_call_callback'
+  | 'staff_ack';
+
 export type BusinessHours = {
   /** Local wall-clock start, 24-hour 'HH:mm', e.g. '09:00'. */
   start: string;

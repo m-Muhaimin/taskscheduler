@@ -17,6 +17,7 @@ export type {
   IntentResult,
   IsoString,
   Lead,
+  MessagingKind,
   OfferedSlot,
   RescheduleHistoryResponse,
   RescheduleLogEntry,

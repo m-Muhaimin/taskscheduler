@@ -27,6 +27,7 @@ const m = vi.hoisted(() => ({
   findUserBookingsInWindow: vi.fn(),
   createConversation: vi.fn(),
   poolQuery: vi.fn(), // T14: the worker's own verification-gate pg pool
+  recordWhatsAppOptIn: vi.fn(), // T18: whatsapp opt-in write point
 }));
 
 vi.mock('pg', () => ({ Pool: class MockPool { query = m.poolQuery; } }));
@@ -65,6 +66,9 @@ vi.mock('../services/booking-service.js', () => ({
 }));
 vi.mock('../services/sms-service.js', () => ({
   sendSms: m.sendSms,
+}));
+vi.mock('../services/consent-service.js', () => ({
+  recordWhatsAppOptIn: m.recordWhatsAppOptIn,
 }));
 vi.mock('../services/reschedule-service.js', () => ({
   initiateRescheduleFlow: m.initiateRescheduleFlow,
@@ -1099,6 +1103,172 @@ describe('processInboundSms: T16 staff-phone operator flow', () => {
 
     expect(m.resolveStaffByPhone).toHaveBeenCalledWith('+15551234567', 'org-1');
     expect(m.findOrCreateCustomer).toHaveBeenCalledWith('org-1', '+15551234567');
+    expect(m.createEscalation).not.toHaveBeenCalled();
+  });
+});
+
+describe('processInboundSms: T18 WhatsApp opt-in write points', () => {
+  /** Unverified customer row (same shape as the T14 gate tests). */
+  function unverifiedCustomer(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'cust-1',
+      organizationId: 'org-1',
+      name: null,
+      phone: '+8801712345678',
+      email: null,
+      phoneVerifiedAt: null,
+      verificationCode: '246810',
+      verificationCodeExpiresAt: '2099-01-01T00:00:00.000Z',
+      verificationAttempts: 0,
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  const WA_JOB = {
+    From: 'whatsapp:+8801712345678',
+    To: 'whatsapp:+8809612345678',
+    MessageSid: 'SM1234567890',
+  };
+
+  it('WA keyword on whatsapp: records the opt-in, replies with a confirmation, and completes WITHOUT classifying', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-wa-keyword',
+    });
+
+    await worker.processInboundSms(job({ ...WA_JOB, Body: 'WA' }));
+
+    expect(m.recordWhatsAppOptIn).toHaveBeenCalledWith('cust-1');
+    // Exactly one SMS: the opt-in confirmation (no intent dispatch afterwards).
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'whatsapp:+8801712345678',
+        channel: 'whatsapp',
+        body: 'WhatsApp updates on. Reply STOP any time.',
+      }),
+    );
+    // A control message is never an intent.
+    expect(m.classifyStep).not.toHaveBeenCalled();
+    expect(m.createEscalation).not.toHaveBeenCalled();
+  });
+
+  it('WA keyword is case-insensitive and trimmed', async () => {
+    const worker = await loadWorker();
+
+    await worker.processInboundSms(job({ ...WA_JOB, Body: '  wa  ' }));
+
+    expect(m.recordWhatsAppOptIn).toHaveBeenCalledWith('cust-1');
+    expect(m.classifyStep).not.toHaveBeenCalled();
+  });
+
+  it('WA opt-in record failure FAILS VISIBLY (explicit consent must persist) and never classifies', async () => {
+    const worker = await loadWorker();
+    m.recordWhatsAppOptIn.mockRejectedValue(new Error('db down'));
+
+    await expect(
+      worker.processInboundSms(job({ ...WA_JOB, Body: 'WA' })),
+    ).rejects.toThrow('db down');
+    expect(m.classifyStep).not.toHaveBeenCalled();
+  });
+
+  it('WA on the sms channel is NOT special-cased: classified as normal traffic, no opt-in', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-wa-sms',
+    });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'WA', To: '+15559876543' }));
+
+    expect(m.recordWhatsAppOptIn).not.toHaveBeenCalled();
+    expect(m.classifyStep).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledTimes(1); // help reply
+  });
+
+  it('verified-now on whatsapp (customer completes the gate this message): auto opt-in recorded, then classify', async () => {
+    const worker = await loadWorker();
+    m.findOrCreateCustomer.mockResolvedValue(unverifiedCustomer());
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-verify-wa',
+    });
+
+    await worker.processInboundSms(job({ ...WA_JOB, Body: '246810' }));
+
+    expect(m.recordWhatsAppOptIn).toHaveBeenCalledWith('cust-1');
+    expect(m.classifyStep).toHaveBeenCalledTimes(1);
+    expect(m.classifyStep).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ body: '246810' }),
+      expect.any(Function),
+      expect.any(String),
+    );
+    // "Number verified!" + the help reply.
+    expect(m.sendSms).toHaveBeenCalledTimes(2);
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({ body: 'Number verified!', channel: 'whatsapp' }),
+    );
+  });
+
+  it('whatsapp from an already-verified customer: auto opt-in recorded (idempotent), then classified normally', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-wa-verified',
+    });
+
+    await worker.processInboundSms(job({ ...WA_JOB, Body: 'help' }));
+
+    expect(m.recordWhatsAppOptIn).toHaveBeenCalledWith('cust-1');
+    expect(m.classifyStep).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'whatsapp:+8801712345678', channel: 'whatsapp' }),
+    );
+  });
+
+  it('sms channel verified customer: NO opt-in record (SMS traffic is not WhatsApp consent)', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-sms-optin',
+    });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'help', To: '+15559876543' }));
+
+    expect(m.recordWhatsAppOptIn).not.toHaveBeenCalled();
+    expect(m.classifyStep).toHaveBeenCalledTimes(1);
+  });
+
+  it('whatsapp auto opt-in record failure is best-effort: the intent still dispatches', async () => {
+    const worker = await loadWorker();
+    m.recordWhatsAppOptIn.mockRejectedValue(new Error('db down'));
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-best-effort',
+    });
+
+    await expect(
+      worker.processInboundSms(job({ ...WA_JOB, Body: 'help' })),
+    ).resolves.toBeUndefined();
+    expect(m.classifyStep).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
     expect(m.createEscalation).not.toHaveBeenCalled();
   });
 });

@@ -14,6 +14,7 @@ import { sendSms, type SendSmsInput, type SentSms } from '../services/sms-servic
 import { normalizeChannelAddress, toChannelAddress } from '../services/phone-utils.js';
 import type { Channel } from '../types.js';
 import { createEscalation } from '../services/escalation-service.js';
+import { recordWhatsAppOptIn } from '../services/consent-service.js';
 import { createConversation, getConversationByPhone } from '../services/conversation-service.js';
 import {
   findOrCreateCustomer,
@@ -167,12 +168,36 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
   // codes and NEVER classifies, replies with intent content, or escalates.
   // Verified customers skip the gate entirely (zero behavior change).
   if (!customer) return; // defensive — findOrCreateCustomer never returns null
+  let verifiedNow = false;
   if (!customer.phoneVerifiedAt) {
     const outcome = await runVerificationGate(customer, customerPhone, body, channel);
     if (outcome !== 'verified-now') {
       // The job completes in worker tick(); the SMS re-issue loop IS the retry
       // path (T14) — no classify, no dispatch, no escalation row.
       return;
+    }
+    verifiedNow = true;
+  }
+
+  // T18 WhatsApp opt-in write points (before classify — never classified).
+  if (channel === 'whatsapp') {
+    const verified = customer.phoneVerifiedAt !== null || verifiedNow;
+    // (a) WA keyword: explicit opt-in, then the job completes. The keyword is
+    // a control message, not an intent — it must never reach classify.
+    if (body.trim().toUpperCase() === 'WA') {
+      await recordWhatsAppOptIn(customer.id);
+      await replySms(customerPhone, 'WhatsApp updates on. Reply STOP any time.', channel);
+      return;
+    }
+    // (b) auto opt-in: a verified customer who messages over WhatsApp consents
+    // to fallback delivery (idempotent; the flag is already true on re-message).
+    // Best-effort: a transient record failure must not block the actual intent.
+    if (verified) {
+      try {
+        await recordWhatsAppOptIn(customer.id);
+      } catch (err) {
+        console.error('[worker] whatsapp auto opt-in record failed:', err);
+      }
     }
   }
 
