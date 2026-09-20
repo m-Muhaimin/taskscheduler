@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthError, signIn } from "@/lib/auth";
+import { resolvePostAuthPath } from "@/lib/workspace-api";
 import { validateEmail, validatePassword } from "@/lib/validation";
 import { TextField } from "./text-field";
 import { PasswordField } from "./password-field";
@@ -45,7 +46,14 @@ export function LoginForm() {
     setLoading(true);
     try {
       await signIn({ email, password });
-      router.push("/dashboard");
+      // Staff/technician accounts always belong to an org already; owners
+      // who somehow never finished setup (e.g. closed the tab mid-onboarding)
+      // land back on it instead of a broken, org-less dashboard. A failure
+      // in this check specifically (not signIn itself) shouldn't strand an
+      // already-authenticated user on the login form — fall back to
+      // /dashboard, which has its own retry-capable error handling.
+      const path = await resolvePostAuthPath().catch(() => "/dashboard");
+      if (path) router.push(path);
     } catch (err) {
       if (err instanceof AuthError && err.field) {
         setErrors(err.field === "email" ? { email: err.message } : { password: err.message });

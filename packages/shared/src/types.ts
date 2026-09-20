@@ -465,8 +465,33 @@ export type DashboardApiErrorResponse = {
     | 'server_error'
     | 'invalid_body'
     | 'conversation_not_found'
-    | 'no_suggestion';
+    | 'no_suggestion'
+    | 'already_has_organization';
 };
+
+// ── Workspace setup (org creation) ──────────────────────────────────────────
+// POST /api/workspace, GET /api/workspace/status — the new-user-after-signup
+// flow. A user has a valid session (rl_tradespeople row + JWT) before they
+// necessarily have an organization; these are the two calls that bridge that
+// gap. See apps/web/app/onboarding/workspace and organization-service.ts
+// createOrganization(). Picks up the T4 brief's deliberately-deferred
+// business-name field ("keep in UI, do NOT send to API") now that this path
+// exists to send it to.
+
+export type WorkspaceDto = {
+  id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+};
+
+/** GET /api/workspace/status — cheap check the client uses to decide whether
+ *  to route a freshly-authenticated user to onboarding or straight to the
+ *  dashboard. */
+export type WorkspaceStatusResponse = { hasOrganization: boolean };
+
+/** POST /api/workspace success body. */
+export type CreateWorkspaceResponse = { organization: WorkspaceDto };
 
 /** Success body for POST /api/dashboard/inbox/:conversationId/reply and
  *  POST /api/dashboard/inbox/:conversationId/approve (T10). */

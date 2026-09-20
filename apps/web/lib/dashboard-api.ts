@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { authedFetch, clearSessionCookie } from "@/lib/auth";
 import type {
   AutomationSettings,
@@ -227,7 +228,11 @@ export type DashboardLoad<T> =
  * its week params), keeping a single in-flight fetch per key. `retry` re-fires
  * the current loader. The loader itself owns the 401 redirect; SESSION_EXPIRED
  * results are ignored so the page sits in its loading frame while the browser
- * navigates away.
+ * navigates away. NO_ORGANIZATION is handled the same way, redirecting to
+ * /onboarding/workspace instead of rendering a per-page empty state — a user
+ * with genuinely no organization has no dashboard to look at yet, and every
+ * page independently showing "no data yet, the AI starts booking here" was
+ * a dead end with no way to actually create that organization.
  */
 export function useDashboardData<T>(
   loader: () => Promise<T | NoOrganization | typeof SESSION_EXPIRED>,
@@ -237,6 +242,7 @@ export function useDashboardData<T>(
   const [attempt, setAttempt] = useState(0);
   const loaderRef = useRef(loader);
   loaderRef.current = loader;
+  const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
@@ -245,8 +251,11 @@ export function useDashboardData<T>(
       .then((result) => {
         if (cancelled) return;
         if (result === SESSION_EXPIRED) return; // redirect to /login is in flight
-        if (result === NO_ORGANIZATION) setState({ status: "empty" });
-        else setState({ status: "ready", data: result });
+        if (result === NO_ORGANIZATION) {
+          router.replace("/onboarding/workspace");
+          return; // stay in the loading frame while the browser navigates away
+        }
+        setState({ status: "ready", data: result });
       })
       .catch((err: unknown) => {
         if (cancelled) return;

@@ -16,7 +16,7 @@ export function middleware(req: NextRequest): NextResponse {
   const { pathname } = req.nextUrl;
   const hasSession = req.cookies.has(SESSION_COOKIE);
 
-  if (!hasSession && pathname.startsWith("/dashboard")) {
+  if (!hasSession && (pathname.startsWith("/dashboard") || pathname.startsWith("/onboarding"))) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
@@ -34,5 +34,5 @@ export function middleware(req: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/signup", "/forgot-password"],
+  matcher: ["/dashboard/:path*", "/onboarding/:path*", "/login", "/signup", "/forgot-password"],
 };

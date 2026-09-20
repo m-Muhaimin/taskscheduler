@@ -67,7 +67,10 @@ export function SignupForm() {
     setLoading(true);
     try {
       await signUp(values);
-      router.push("/dashboard");
+      // Business name collected here used to be dropped before it reached
+      // the API (see lib/auth.ts signUp() — "T4"); now it's carried through
+      // as a prefill for the workspace-creation step, not silently lost.
+      router.push(`/onboarding/workspace?business=${encodeURIComponent(values.business.trim())}`);
     } catch (err) {
       if (err instanceof AuthError && err.field) {
         setErrors(err.field === "email" ? { email: err.message } : { password: err.message });
