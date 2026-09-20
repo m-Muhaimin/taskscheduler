@@ -65,7 +65,9 @@ AI scheduling/dispatch assistant for solo tradespeople (plumbers, electricians, 
 - **Credentials**: `.env` was previously committed; ensure credentials are rotated and never committed again.
 - **Local DB**: Local development uses `embedded-postgres`. Refer to `docs/local-dev.md`.
 
+- **Production boot (Render)**: the workspace packages `@tradescheduler/shared` and `@tradescheduler/ai` ship raw TypeScript (`"main": "src/index.ts"`, internal `.js`-suffixed imports) with no dist build, so they only resolve at runtime under a `.js→.ts`-aware loader. `node dist/index.js` (Node ≥22.6 native type-stripping) crashes with `ERR_MODULE_NOT_FOUND: packages/shared/src/types.js`. The API `start` and `worker:start` scripts therefore run `node --import tsx dist/...` (`tsx` is a runtime dependency of `apps/api`). Dev/worker already used tsx; keep it that way if render.yaml start commands change.
 - **Web build warning (cosmetic)**: every web build prints `⚠ Found lockfile missing swc dependencies... ⨯ Failed to patch lockfile` (TypeError in patch-incorrect-lockfile.js). It is a registry fetch that fails offline; even pinning `@next/swc-win32-x64-msvc@14.2.33` in web devDependencies doesn't satisfy it. Builds succeed regardless — ignore.
 - **Headless dev quirk (Windows)**: `next dev`/`next start` exit code 0 when stdin closes (detached/agent launches). Wrap spawns with `C:UsersmuhaiAppDataLocalTempopencode
 ext-keepalive.cjs` (holds a stdin pipe open) — same trick for the API (api-keepalive.cjs, sets `KEEPALIVE_CWD`/`KEEPALIVE_BIN`/`KEEPALIVE_ARGS`).
-- **Port 3000 contention**: unrelated dev servers can occupy :3000 (observed `K:idgeline-dashboard-scaffold`). Run apps/web with `-p 3100` when that happens — the `/api` proxy rewrites are port-agnostic.
+- **Port 3000 contention**: unrelated dev servers can occupy :3000 (observed `K:
+idgeline-dashboard-scaffold`). Run apps/web with `-p 3100` when that happens — the `/api` proxy rewrites are port-agnostic.
