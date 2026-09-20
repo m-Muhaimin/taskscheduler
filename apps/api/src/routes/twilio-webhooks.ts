@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { verifyTwilioSignature } from '../middleware/twilio-signature.js';
 import { enqueue } from '../services/queue-service.js';
+import { normalizeChannelAddress } from '../services/phone-utils.js';
 import type { TwilioInboundSmsPayload } from '../types.js';
 
 /**
@@ -25,9 +26,13 @@ twilioWebhooksRouter.post('/inbound-sms', verifyTwilioSignature, async (req, res
     return;
   }
 
-  // CP03 spec C7: reject non-E.164 From BEFORE enqueueing � no customer row
-  // should ever be created for a malformed phone number.
-  if (!/^\+?[1-9][0-9]{1,14}$/.test(body.From as string)) {
+  // CP03 spec C7: reject non-E.164 From BEFORE enqueueing — no customer row
+  // should ever be created for a malformed phone number. WhatsApp inbound
+  // arrives as whatsapp:+880…; normalize (strip the prefix) FIRST so the gate
+  // validates the bare E.164, then keep the raw values for the job payload
+  // (the worker re-normalizes From and To for org lookup / channel routing).
+  const { e164: fromE164, channel } = normalizeChannelAddress(body.From as string);
+  if (!/^\+?[1-9][0-9]{1,14}$/.test(fromE164)) {
     res.status(400).json({ error: 'INVALID_PHONE' });
     return;
   }
@@ -41,6 +46,7 @@ twilioWebhooksRouter.post('/inbound-sms', verifyTwilioSignature, async (req, res
         Body: body.Body,
         MessageSid: body.MessageSid,
         AccountSid: body.AccountSid ?? null,
+        Channel: channel,
       },
     });
     console.log('[webhook] enqueued job', JSON.stringify({ id: job.id, type: job.type }));

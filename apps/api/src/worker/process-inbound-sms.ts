@@ -1,11 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { classifyStep, createProvider } from '@tradescheduler/ai';
-import { initiateRescheduleFlow, processSlotChoice, confirmReschedule } from '../services/reschedule-service.js';
+import {
+  initiateRescheduleFlow,
+  processSlotChoice,
+  confirmReschedule,
+  type SmsSendFn,
+} from '../services/reschedule-service.js';
 import { defaultAuth } from '../services/calendar-service.js';
 import type { QueueJob } from '../services/queue-service.js';
 import { schedulingEngine } from '../services/scheduling-engine.js';
-import { sendSms } from '../services/sms-service.js';
+import { sendSms, type SendSmsInput, type SentSms } from '../services/sms-service.js';
+import { normalizeChannelAddress, toChannelAddress } from '../services/phone-utils.js';
+import type { Channel } from '../types.js';
 import { createEscalation } from '../services/escalation-service.js';
 import { createConversation, getConversationByPhone } from '../services/conversation-service.js';
 import {
@@ -47,7 +54,13 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
     return;
   }
 
-  const customerPhone = raw.From;
+  // T17 Phase B: WhatsApp inbound arrives as whatsapp:+880… on From (and To).
+  // Normalize ONCE at the top — customerPhone is always the bare E.164 for the
+  // customer row / OTP / org lookups; `channel` drives conversation creation
+  // and same-channel replies. SMS traffic (no prefix) is unchanged: the
+  // normalize pass returns the address verbatim with channel 'sms'.
+  const { channel: fromChannel, e164: customerPhone } = normalizeChannelAddress(raw.From);
+  let channel: Channel = fromChannel;
   const body = raw.Body;
 
   // CP03 spec C7: reject non-E.164 From BEFORE touching the customer table.
@@ -61,7 +74,18 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
   }
 
   // CP03 spec H.2: resolve organization from the inbound Twilio number (To).
-  const toNumber = typeof raw.To === 'string' ? raw.To : null;
+  // whatsapp: prefix is stripped before the lookup (rl_twilio_numbers stores
+  // bare E.164). Inconsistent pair (whatsapp: From, bare-phone To) is treated
+  // as an SMS fallback — never guessed.
+  const rawTo = typeof raw.To === 'string' ? raw.To : null;
+  let toNumber: string | null = null;
+  if (rawTo) {
+    const normTo = normalizeChannelAddress(rawTo);
+    toNumber = normTo.e164;
+    if (channel === 'whatsapp' && normTo.channel !== 'whatsapp') {
+      channel = 'sms';
+    }
+  }
   let organizationId: string | null = null;
   if (toNumber) {
     try {
@@ -119,7 +143,7 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
   let customer: Customer | null = null;
   try {
     customer = await findOrCreateCustomer(organizationId, customerPhone);
-    const conversation = await findOrCreateConversation(customer.id, 'sms');
+    const conversation = await findOrCreateConversation(customer.id, channel);
     await appendMessage(
       conversation.id,
       'inbound',
@@ -144,7 +168,7 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
   // Verified customers skip the gate entirely (zero behavior change).
   if (!customer) return; // defensive — findOrCreateCustomer never returns null
   if (!customer.phoneVerifiedAt) {
-    const outcome = await runVerificationGate(customer, customerPhone, body);
+    const outcome = await runVerificationGate(customer, customerPhone, body, channel);
     if (outcome !== 'verified-now') {
       // The job completes in worker tick(); the SMS re-issue loop IS the retry
       // path (T14) — no classify, no dispatch, no escalation row.
@@ -169,9 +193,9 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
   // every other outcome completes the job with an SMS (re-ask / fresh code)
   // and the code reply itself is never classified or dispatched.
   if (conversation?.state === 'awaiting_confirmation_code') {
-    const outcome = await runConfirmCodeGate(conversation, body);
+    const outcome = await runConfirmCodeGate(conversation, body, channel);
     if (outcome === 'verified') {
-      await performConfirmation(organizationId, customerPhone);
+      await performConfirmation(organizationId, customerPhone, channel);
     }
     return;
   }
@@ -217,7 +241,7 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
 
   switch (intent) {
     case 'reschedule': {
-      await handleRescheduleIntent(organizationId, customerPhone, body);
+      await handleRescheduleIntent(organizationId, customerPhone, body, channel);
       break;
     }
 
@@ -225,18 +249,18 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
       const trimmed = body.trim();
       const choice = parseInt(trimmed, 10);
       if (!isNaN(choice) && choice >= 1 && choice <= 3) {
-        await handleSlotChoiceIntent(customerPhone, choice);
+        await handleSlotChoiceIntent(customerPhone, choice, channel);
       }
       break;
     }
 
     case 'confirm': {
-      await handleConfirmIntent(organizationId, customerPhone, body);
+      await handleConfirmIntent(organizationId, customerPhone, body, channel);
       break;
     }
 
     case 'help': {
-      await sendHelpSms(customerPhone);
+      await sendHelpSms(customerPhone, channel);
       break;
     }
 
@@ -248,7 +272,7 @@ export async function processInboundSms(job: QueueJob): Promise<void> {
     }
 
     case 'no-matching-booking': {
-      await sendNoMatchingBookingSms(customerPhone);
+      await sendNoMatchingBookingSms(customerPhone, channel);
       break;
     }
 
@@ -270,6 +294,7 @@ async function handleRescheduleIntent(
   organizationId: string,
   customerPhone: string,
   _body: string,
+  channel: Channel,
 ): Promise<void> {
   try {
     // CP04: resolve the booking id from conversation state when mid-flow,
@@ -288,9 +313,18 @@ async function handleRescheduleIntent(
 
     if (!bookingId) {
       // Informative dead-end, not an escalation - no booking under this number.
-      await sendNoMatchingBookingSms(customerPhone);
+      await sendNoMatchingBookingSms(customerPhone, channel);
       return;
     }
+
+    // The reschedule flow's internal SMS (slot offer) and subsequent replies
+    // must go out on the SAME channel the customer wrote in. sms: pass the
+    // real sendSms untouched (byte-identical legacy behavior); whatsapp: wrap
+    // it so sms-service picks the WhatsApp sender + whatsapp: address.
+    const flowSmsSender: SmsSendFn =
+      channel === 'whatsapp'
+        ? (input: SendSmsInput) => sendSms({ ...input, channel })
+        : sendSms;
 
     await initiateRescheduleFlow(
       bookingId,
@@ -302,7 +336,7 @@ async function handleRescheduleIntent(
         cal.events.list({ calendarId: calId, timeMin: tMin, timeMax: tMax, singleEvents: true, orderBy: 'startTime' }),
       (id: string) => findBookingById(organizationId, id),
       findUserProfile,
-      sendSms,
+      flowSmsSender,
       createConversation,
       schedulingEngine.getAvailableSlots,
       schedulingEngine.pickOfferedSlots,
@@ -323,12 +357,24 @@ async function handleRescheduleIntent(
 /**
  * Validate the numeric slot choice, update conversation, send confirm-ask SMS.
  */
-async function handleSlotChoiceIntent(customerPhone: string, choice: number): Promise<void> {
+async function handleSlotChoiceIntent(customerPhone: string, choice: number, channel: Channel): Promise<void> {
   try {
-    const conversation = await processSlotChoice(customerPhone, choice);
+    // processSlotChoice sends its own "Reply YES to confirm" SMS — keep it on
+    // the SAME channel (wrapper) or pass the real sendSms unchanged (sms).
+    const choiceSmsSender: SmsSendFn =
+      channel === 'whatsapp'
+        ? (input: SendSmsInput) => sendSms({ ...input, channel })
+        : sendSms;
+    const conversation = await processSlotChoice(
+      customerPhone,
+      choice,
+      undefined,
+      undefined,
+      choiceSmsSender,
+    );
     if (!conversation) {
       // No conversation in 'offering_slots' state, or choice out of range.
-      await sendInvalidChoiceSms(customerPhone);
+      await sendInvalidChoiceSms(customerPhone, channel);
     }
   } catch (err) {
     console.error('[worker] processSlotChoice failed:', err);
@@ -352,6 +398,7 @@ async function handleConfirmIntent(
   organizationId: string,
   customerPhone: string,
   body: string,
+  channel: Channel,
 ): Promise<void> {
   try {
     let conversation: ConversationState | null = null;
@@ -362,7 +409,7 @@ async function handleConfirmIntent(
     }
 
     if (conversation) {
-      const outcome = await runConfirmCodeGate(conversation, body);
+      const outcome = await runConfirmCodeGate(conversation, body, channel);
       // 'code-issued' | 'retry' | 'reissued': the gate sent an SMS (fresh
       // code / re-ask) and the conversation is now awaiting its code — the
       // job completes here with NO mutation. 'not-applicable': conversation
@@ -377,7 +424,7 @@ async function handleConfirmIntent(
       }
     }
 
-    await performConfirmation(organizationId, customerPhone);
+    await performConfirmation(organizationId, customerPhone, channel);
   } catch (err) {
     console.error('[worker] confirm flow failed:', err);
     await createEscalation({
@@ -396,6 +443,7 @@ async function handleConfirmIntent(
 async function performConfirmation(
   organizationId: string,
   customerPhone: string,
+  channel: Channel,
 ): Promise<void> {
   try {
     const result = await confirmReschedule(
@@ -408,12 +456,12 @@ async function performConfirmation(
       console.error('[worker] confirmReschedule failed:', result.error);
       if (result.error?.includes('No conversation found') ||
           result.error?.includes('not in awaiting_slot_choice')) {
-        await sendNoMatchingBookingSms(customerPhone);
+        await sendNoMatchingBookingSms(customerPhone, channel);
       } else {
         // Calendar failure or booking missing (or the fail-closed
         // 'confirmation_required' refusal): escalation is handled inside
         // reschedule-service; give the customer a courteous heads-up.
-        await sendConfirmFailedSms(customerPhone);
+        await sendConfirmFailedSms(customerPhone, channel);
       }
       return;
     }
@@ -435,7 +483,7 @@ async function performConfirmation(
       status: 'confirmed',
       googleCalendarEventId: booking.googleCalendarEventId,
     });
-    await sendConfirmationSms(customerPhone, booking);
+    await sendConfirmationSms(customerPhone, booking, channel);
   } catch (err) {
     console.error('[worker] confirmReschedule threw:', err);
     await createEscalation({
@@ -450,25 +498,50 @@ async function performConfirmation(
 // SMS helpers (real, via sms-service)
 // ---------------------------------------------------------------------------
 
+/**
+ * T17 Phase B: same-channel customer reply. Every customer-facing SMS in this
+ * file is a reply to an inbound message and MUST go out on the SAME channel
+ * the customer used - whatsapp inbounds get whatsapp:+ replies from the BYON
+ * sender number (TWILIO_WHATSAPP_NUMBER; missing sender -> clear error from
+ * sms-service before any API call). sms keeps the exact legacy sendSms shape
+ * ({ to, body } - no channel key - so existing unit-test contracts and live
+ * behavior are byte-for-byte unchanged).
+ */
+function replySms(customerPhone: string, body: string, channel: Channel = 'sms'): Promise<SentSms> {
+  if (channel === 'whatsapp') {
+    const input: SendSmsInput = {
+      to: toChannelAddress(customerPhone, 'whatsapp'),
+      body,
+      channel: 'whatsapp',
+    };
+    const whatsappFrom = process.env.TWILIO_WHATSAPP_NUMBER;
+    if (whatsappFrom) input.from = whatsappFrom;
+    return sendSms(input);
+  }
+  return sendSms({ to: customerPhone, body });
+}
+
 /** Real: send a help SMS to the customer explaining what they can do. */
 /** Real: tell the customer their numeric choice didn't match an offer. */
-export async function sendInvalidChoiceSms(customerPhone: string): Promise<void> {
-  await sendSms({
-    to: customerPhone,
-    body: `Sorry, I didn't catch that. Reply with 1, 2, or 3 to pick a time, or HELP for your options.`,
-  });
+export async function sendInvalidChoiceSms(customerPhone: string, channel: Channel = 'sms'): Promise<void> {
+  await replySms(
+    customerPhone,
+    `Sorry, I didn't catch that. Reply with 1, 2, or 3 to pick a time, or HELP for your options.`,
+    channel,
+  );
 }
 
 /** Real: courteous heads-up when the confirmation step fails (calendar etc.). */
-export async function sendConfirmFailedSms(customerPhone: string): Promise<void> {
-  await sendSms({
-    to: customerPhone,
-    body: `Sorry, something went wrong confirming your appointment. Our team will contact you shortly to sort it out.`,
-  });
+export async function sendConfirmFailedSms(customerPhone: string, channel: Channel = 'sms'): Promise<void> {
+  await replySms(
+    customerPhone,
+    `Sorry, something went wrong confirming your appointment. Our team will contact you shortly to sort it out.`,
+    channel,
+  );
 }
 
 /** Real: confirm the appointment to the customer with the new time. */
-export async function sendConfirmationSms(customerPhone: string, booking: import('@tradescheduler/shared').Booking): Promise<void> {
+export async function sendConfirmationSms(customerPhone: string, booking: import('@tradescheduler/shared').Booking, channel: Channel = 'sms'): Promise<void> {
   const when = new Date(booking.startTime).toLocaleString('en-US', {
     timeZone: 'America/New_York',
     weekday: 'short',
@@ -477,17 +550,19 @@ export async function sendConfirmationSms(customerPhone: string, booking: import
     hour: 'numeric',
     minute: '2-digit',
   });
-  await sendSms({
-    to: customerPhone,
-    body: `Your appointment is confirmed for ${when}. Reply RESCHEDULE if you need to move it.`,
-  });
+  await replySms(
+    customerPhone,
+    `Your appointment is confirmed for ${when}. Reply RESCHEDULE if you need to move it.`,
+    channel,
+  );
 }
 
-export async function sendHelpSms(customerPhone: string): Promise<void> {
-  await sendSms({
-    to: customerPhone,
-    body: `Hi! I can help with rescheduling or confirming your booking. Reply RESCHEDULE to change your appointment time, CONFIRM to lock it in, or reply with a help keyword and I'll walk you through your options.`,
-  });
+export async function sendHelpSms(customerPhone: string, channel: Channel = 'sms'): Promise<void> {
+  await replySms(
+    customerPhone,
+    `Hi! I can help with rescheduling or confirming your booking. Reply RESCHEDULE to change your appointment time, CONFIRM to lock it in, or reply with a help keyword and I'll walk you through your options.`,
+    channel,
+  );
 }
 
 /**
@@ -495,11 +570,12 @@ export async function sendHelpSms(customerPhone: string): Promise<void> {
  * their number. No escalation � this is an informative dead-end, not an
  * operational incident.
  */
-export async function sendNoMatchingBookingSms(customerPhone: string): Promise<void> {
-  await sendSms({
-    to: customerPhone,
-    body: `Hi! I wasn't able to find a booking under this number. Please contact us directly to sort this out.`,
-  });
+export async function sendNoMatchingBookingSms(customerPhone: string, channel: Channel = 'sms'): Promise<void> {
+  await replySms(
+    customerPhone,
+    `Hi! I wasn't able to find a booking under this number. Please contact us directly to sort this out.`,
+    channel,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -555,7 +631,7 @@ type VerificationOutcome =
  * Issue a fresh code, persist it (10-minute TTL, counter reset — a fresh code
  * always carries a fresh 3-attempt window), and send it to the customer.
  */
-async function issueAndSendCode(customerId: string, customerPhone: string): Promise<void> {
+async function issueAndSendCode(customerId: string, customerPhone: string, channel: Channel): Promise<void> {
   const code = issueCode();
   await getPool().query(
     `update public.rl_customers
@@ -565,7 +641,7 @@ async function issueAndSendCode(customerId: string, customerPhone: string): Prom
       where id = $1`,
     [customerId, code],
   );
-  await sendSms({ to: customerPhone, body: verificationCodeSms(code) });
+  await replySms(customerPhone, verificationCodeSms(code), channel);
 }
 
 /**
@@ -576,10 +652,11 @@ async function runVerificationGate(
   customer: Customer,
   customerPhone: string,
   body: string,
+  channel: Channel,
 ): Promise<VerificationOutcome> {
   const submitted = body.trim();
 
-  // No pending code, or it expired → issue a fresh one.
+  // No pending code, or it expired -> issue a fresh one.
   const expiresAt = customer.verificationCodeExpiresAt;
   const pending =
     customer.verificationCode !== null &&
@@ -587,11 +664,11 @@ async function runVerificationGate(
     new Date(expiresAt).getTime() > Date.now();
 
   if (!pending) {
-    await issueAndSendCode(customer.id, customerPhone);
+    await issueAndSendCode(customer.id, customerPhone, channel);
     return 'code-issued';
   }
 
-  // Pending code — constant-time compare of the trimmed reply.
+  // Pending code - constant-time compare of the trimmed reply.
   const storedCode = customer.verificationCode;
   if (storedCode && verifyCode(storedCode, submitted)) {
     await getPool().query(
@@ -603,12 +680,12 @@ async function runVerificationGate(
         where id = $1`,
       [customer.id],
     );
-    await sendSms({ to: customerPhone, body: VERIFICATION_CONFIRMED_SMS });
+    await replySms(customerPhone, VERIFICATION_CONFIRMED_SMS, channel);
     return 'verified-now';
   }
 
   // Mismatch: count the attempt. Lockout is a re-issue (fresh code + fresh
-  // 3-attempt window), not a hard block — the SMS loop IS the retry path.
+  // 3-attempt window), not a hard block - the SMS loop IS the retry path.
   await getPool().query(
     `update public.rl_customers
         set verification_attempts = verification_attempts + 1
@@ -617,11 +694,11 @@ async function runVerificationGate(
   );
   const attempts = customer.verificationAttempts + 1;
   if (attempts >= VERIFICATION_MAX_ATTEMPTS) {
-    await issueAndSendCode(customer.id, customerPhone);
+    await issueAndSendCode(customer.id, customerPhone, channel);
     return 'reissued';
   }
 
-  await sendSms({ to: customerPhone, body: VERIFICATION_MISMATCH_SMS });
+  await replySms(customerPhone, VERIFICATION_MISMATCH_SMS, channel);
   return 'retry';
 }
 
@@ -655,6 +732,7 @@ type ConfirmCodeOutcome =
 async function runConfirmCodeGate(
   conversation: ConversationState,
   submittedBody: string,
+  channel: Channel,
 ): Promise<ConfirmCodeOutcome> {
   const submitted = submittedBody.trim();
   const pending =
@@ -665,7 +743,7 @@ async function runConfirmCodeGate(
   if (!pending) {
     // The gate only applies at a confirmation step: a fresh CONFIRM after a
     // slot choice, or a stale/expired handshake still awaiting its code.
-    // Any other state (offering_slots, completed, …) is 'not-applicable' —
+    // Any other state (offering_slots, completed, ...) is 'not-applicable' -
     // the caller keeps the pre-T15 dead-end behavior (no code issued).
     const atConfirmationStep =
       conversation.state === 'awaiting_slot_choice' ||
@@ -673,11 +751,11 @@ async function runConfirmCodeGate(
     if (!atConfirmationStep) {
       return 'not-applicable';
     }
-    await issueFlowCodeAndSend(conversation.id, conversation.phone);
+    await issueFlowCodeAndSend(conversation.id, conversation.phone, channel);
     return 'code-issued';
   }
 
-  // Pending code — constant-time compare of sha256(submitted) vs the stored hash.
+  // Pending code - constant-time compare of sha256(submitted) vs the stored hash.
   const matched = verifyFlowCode(
     conversation.confirmationCodeHash as string,
     sha256Hex(submitted),
@@ -698,11 +776,11 @@ async function runConfirmCodeGate(
   );
   const attempts = conversation.confirmationAttempts + 1;
   if (attempts >= CONFIRM_CODE_MAX_ATTEMPTS) {
-    await issueFlowCodeAndSend(conversation.id, conversation.phone);
+    await issueFlowCodeAndSend(conversation.id, conversation.phone, channel);
     return 'reissued';
   }
 
-  await sendSms({ to: conversation.phone, body: CONFIRM_CODE_MISMATCH_SMS });
+  await replySms(conversation.phone, CONFIRM_CODE_MISMATCH_SMS, channel);
   return 'retry';
 }
 
@@ -712,7 +790,7 @@ async function runConfirmCodeGate(
  * `awaiting_confirmation_code`, and send the plaintext code to the customer.
  * The plaintext never touches the DB — it exists only in this SMS.
  */
-async function issueFlowCodeAndSend(conversationId: string, customerPhone: string): Promise<void> {
+async function issueFlowCodeAndSend(conversationId: string, customerPhone: string, channel: Channel): Promise<void> {
   const { code, hash } = issueFlowCode();
   await getPool().query(
     `update public.rl_conversation_states
@@ -724,7 +802,7 @@ async function issueFlowCodeAndSend(conversationId: string, customerPhone: strin
       where id = $1`,
     [conversationId, hash],
   );
-  await sendSms({ to: customerPhone, body: confirmCodeSms(code) });
+  await replySms(customerPhone, confirmCodeSms(code), channel);
 }
 
 /**

@@ -32,6 +32,7 @@ const MIGRATIONS = [
   "011-confirmation-codes.sql",
   "012-assistant-escalation-type.sql",
   "013-staff-phone.sql",
+  "014-whatsapp-fallback.sql",
 ];
 
 const connectionString = process.env.DATABASE_URL;

@@ -5,6 +5,7 @@ export type {
   BookingStatus,
   BusinessHours,
   CalendarQueryError,
+  Channel,
   ConversationState,
   ConversationStateValue,
   Escalation,

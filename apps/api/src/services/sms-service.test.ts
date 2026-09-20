@@ -33,6 +33,7 @@ afterEach(() => {
   delete process.env.TWILIO_ACCOUNT_SID;
   delete process.env.TWILIO_AUTH_TOKEN;
   delete process.env.TWILIO_PHONE_NUMBER;
+  delete process.env.TWILIO_WHATSAPP_NUMBER;
   delete process.env.TWILIO_SMS_DRY_RUN;
 });
 
@@ -106,6 +107,87 @@ describe('sendSms', () => {
     await expect(sendSms({ to: '', from: '+15551234567', body: 'Hi!' })).rejects.toThrow(
       /`to` is required/,
     );
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendSms — T17 whatsapp channel', () => {
+  const WHATSAPP_NUMBER = '+8809612345678'; // org BYON (business WhatsApp) number
+
+  beforeEach(() => {
+    process.env.TWILIO_WHATSAPP_NUMBER = WHATSAPP_NUMBER;
+  });
+
+  it('prefixes `to` with whatsapp: and selects TWILIO_WHATSAPP_NUMBER as from', async () => {
+    mocks.create.mockResolvedValue({ sid: 'SM789', status: 'queued' });
+
+    const result = await sendSms({ to: '+8801712345678', body: 'Hi!', channel: 'whatsapp' });
+
+    expect(result).toEqual({ messageSid: 'SM789', status: 'queued' });
+    expect(mocks.create).toHaveBeenCalledWith({
+      to: 'whatsapp:+8801712345678',
+      from: WHATSAPP_NUMBER,
+      body: 'Hi!',
+    });
+  });
+
+  it('never double-prefixes an already-prefixed `to` (idempotent addressing)', async () => {
+    mocks.create.mockResolvedValue({ sid: 'SM790', status: 'queued' });
+
+    await sendSms({ to: 'whatsapp:+8801712345678', body: 'Hi!', channel: 'whatsapp' });
+
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'whatsapp:+8801712345678' }),
+    );
+  });
+
+  it('throws a clear error when no WhatsApp sender is configured, before any API call', async () => {
+    delete process.env.TWILIO_WHATSAPP_NUMBER;
+
+    await expect(sendSms({ to: '+8801712345678', body: 'Hi!', channel: 'whatsapp' })).rejects.toThrow(
+      /TWILIO_WHATSAPP_NUMBER/,
+    );
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('an explicit `from` overrides the env sender for whatsapp (caller-supplied sender)', async () => {
+    mocks.create.mockResolvedValue({ sid: 'SM791', status: 'queued' });
+
+    await sendSms({
+      to: '+8801712345678',
+      from: 'whatsapp:+8801987654321',
+      body: 'Hi!',
+      channel: 'whatsapp',
+    });
+
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'whatsapp:+8801712345678', from: 'whatsapp:+8801987654321' }),
+    );
+  });
+
+  it('passes statusCallbackUrl to Twilio ONLY when the caller sets it', async () => {
+    mocks.create.mockResolvedValue({ sid: 'SM792', status: 'queued' });
+
+    await sendSms({
+      to: '+15559876543',
+      body: 'Hi!',
+      statusCallbackUrl: 'https://example.com/twilio/status',
+    });
+
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({ statusCallback: 'https://example.com/twilio/status' }),
+    );
+  });
+
+  it('dry-run logs the channel and skips Twilio entirely (no creds needed)', async () => {
+    delete process.env.TWILIO_ACCOUNT_SID;
+    delete process.env.TWILIO_AUTH_TOKEN;
+    process.env.TWILIO_SMS_DRY_RUN = 'true';
+
+    const result = await sendSms({ to: '+8801712345678', body: 'Hi!', channel: 'whatsapp' });
+
+    expect(result.messageSid).toMatch(/^dry-run-/);
+    expect(result.status).toBe('queued');
     expect(mocks.create).not.toHaveBeenCalled();
   });
 });

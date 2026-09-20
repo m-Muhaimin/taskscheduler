@@ -6,6 +6,14 @@
 /** ISO 8601 datetime string, as transported in JSON / stored in Postgres. */
 export type IsoString = string;
 
+/**
+ * Messaging channels the app accepts and replies on. 'sms' is the default and
+ * historically the only channel; 'whatsapp' is the fallback channel (T17 Phase
+ * B plumbing — inbound accepted + same-channel in-window replies; the
+ * delivery-failure fallback ENGINE is a later phase).
+ */
+export type Channel = 'sms' | 'whatsapp';
+
 export type BusinessHours = {
   /** Local wall-clock start, 24-hour 'HH:mm', e.g. '09:00'. */
   start: string;
@@ -131,11 +139,14 @@ export type ConversationState = {
 
 /** Twilio inbound-SMS webhook body (application/x-www-form-urlencoded), §2.1. */
 export type TwilioInboundSmsPayload = {
-  From: string; // customer phone, E.164
+  From: string; // customer phone, E.164 (WhatsApp inbound arrives as whatsapp:+880…)
   To: string; // tradesperson's Twilio number, E.164
   Body: string;
   MessageSid: string;
   AccountSid: string;
+  /** Derived channel; optional for backward compat with pre-T17 queued jobs
+   *  (they carry no Channel and default to 'sms'). */
+  Channel?: Channel;
   // Twilio appends more fields (FromCity, FromState, SmsSid, ...).
   [key: string]: string | undefined;
 };

@@ -96,8 +96,44 @@ describe('POST /api/twilio/webhooks/inbound-sms', () => {
         Body: BASE_PARAMS.Body,
         MessageSid: BASE_PARAMS.MessageSid,
         AccountSid: BASE_PARAMS.AccountSid,
+        Channel: 'sms',
       }),
     });
+  });
+
+  it('accepts a whatsapp-prefixed From, keeps the raw address, and enqueues with Channel=whatsapp', async () => {
+    const whatsappParams = {
+      ...BASE_PARAMS,
+      From: 'whatsapp:+8801712345678',
+      To: 'whatsapp:+8809612345678',
+    };
+    const sig = computeSignature(webhookUrl(), whatsappParams);
+    const res = await post(whatsappParams, sig);
+
+    expect(res.status).toBe(200);
+    expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueue).toHaveBeenCalledWith({
+      type: 'inbound_sms',
+      payload: expect.objectContaining({
+        // Raw address preserved for the job — the worker re-normalizes (T17).
+        From: 'whatsapp:+8801712345678',
+        To: 'whatsapp:+8809612345678',
+        MessageSid: BASE_PARAMS.MessageSid,
+        AccountSid: BASE_PARAMS.AccountSid,
+        Channel: 'whatsapp',
+      }),
+    });
+  });
+
+  it('rejects a whatsapp-prefixed non-E.164 From with 400 INVALID_PHONE (normalized first)', async () => {
+    const sent = { ...BASE_PARAMS, From: 'whatsapp:not-a-phone' };
+    const sig = computeSignature(webhookUrl(), sent);
+    const res = await post(sent, sig);
+
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toBe('INVALID_PHONE');
+    expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
   it('returns 500 when enqueue fails but never leaks signature semantics', async () => {

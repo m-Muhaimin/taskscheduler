@@ -401,7 +401,13 @@ describe('processInboundSms � CP03 wiring', () => {
 
     await worker.processInboundSms(job({ From: '+15551234567', Body: '2', To: '+15559876543' }));
 
-    expect(m.processSlotChoice).toHaveBeenCalledWith('+15551234567', 2);
+    expect(m.processSlotChoice).toHaveBeenCalledWith(
+      '+15551234567',
+      2,
+      undefined,
+      undefined,
+      expect.any(Function), // channel-aware sms sender (T17: same-channel replies)
+    );
     expect(m.sendSms).toHaveBeenCalledTimes(1);
     expect(m.sendSms).toHaveBeenCalledWith(
       expect.objectContaining({ body: expect.stringContaining('Reply with 1, 2, or 3') }),
@@ -889,7 +895,13 @@ describe('processInboundSms � CP03 wiring', () => {
 
       await worker.processInboundSms(job({ From: '+15551234567', Body: '2', To: '+15559876543' }));
 
-      expect(m.processSlotChoice).toHaveBeenCalledWith('+15551234567', 2);
+      expect(m.processSlotChoice).toHaveBeenCalledWith(
+        '+15551234567',
+        2,
+        undefined,
+        undefined,
+        expect.any(Function), // channel-aware sms sender (T17)
+      );
       // No confirm-code gate activity at all: zero gate DB writes, no SMS,
       // no mutation.
       expect(m.poolQuery).not.toHaveBeenCalled();
@@ -919,6 +931,105 @@ describe('processInboundSms � CP03 wiring', () => {
       );
       expect(m.createEscalation).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('processInboundSms: T17 WhatsApp fallback channel (phase B plumbing)', () => {
+  it('whatsapp From+To: org lookup on bare To, whatsapp conversation, same-channel reply', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-wa',
+    });
+
+    await worker.processInboundSms(job({
+      From: 'whatsapp:+8801712345678',
+      To: 'whatsapp:+8809612345678',
+      Body: 'help',
+      MessageSid: 'SM1234567890',
+    }));
+
+    // Org lookup runs on the BARE To (rl_twilio_numbers stores bare E.164).
+    expect(m.resolveOrganizationIdByTwilioNumber).toHaveBeenCalledWith('+8809612345678');
+    // Customer keyed on the bare From; conversation created on channel whatsapp.
+    expect(m.findOrCreateCustomer).toHaveBeenCalledWith('org-1', '+8801712345678');
+    expect(m.findOrCreateConversation).toHaveBeenCalledWith('cust-1', 'whatsapp');
+    expect(m.appendMessage).toHaveBeenCalledWith(
+      'conv-1',
+      'inbound',
+      'help',
+      'SM1234567890',
+      { From: '+8801712345678', To: '+8809612345678' },
+    );
+    // Reply goes out on the SAME channel: whatsapp:+ address + channel flag.
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'whatsapp:+8801712345678',
+        channel: 'whatsapp',
+      }),
+    );
+    expect(m.createEscalation).not.toHaveBeenCalled();
+  });
+
+  it('whatsapp From + bare-phone To: inconsistent pair is an SMS fallback, never guessed', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-wa-fallback',
+    });
+
+    await worker.processInboundSms(job({
+      From: 'whatsapp:+8801712345678',
+      To: '+15559876543',
+      Body: 'help',
+    }));
+
+    // To lookup uses the bare To as always.
+    expect(m.resolveOrganizationIdByTwilioNumber).toHaveBeenCalledWith('+15559876543');
+    // Channel downgraded to sms: conversation + reply are plain SMS.
+    expect(m.findOrCreateConversation).toHaveBeenCalledWith('cust-1', 'sms');
+    expect(m.sendSms).toHaveBeenCalledTimes(1);
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '+8801712345678' }),
+    );
+  });
+
+  it('whatsapp non-E.164 From escalates (normalized gate still enforced)', async () => {
+    const worker = await loadWorker();
+
+    await worker.processInboundSms(job({ From: 'whatsapp:not-a-phone', Body: 'R', To: 'whatsapp:+8809612345678' }));
+
+    expect(m.createEscalation).toHaveBeenCalledTimes(1);
+    expect(m.createEscalation).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'processing_error' }),
+    );
+    expect(m.findOrCreateCustomer).not.toHaveBeenCalled();
+    expect(m.resolveOrganizationIdByTwilioNumber).not.toHaveBeenCalled();
+  });
+
+  it('sms traffic is unchanged: no channel key in replies (byte-for-byte legacy)', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'help', confidence: 1 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-sms-legacy',
+    });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'help', To: '+15559876543' }));
+
+    expect(m.findOrCreateConversation).toHaveBeenCalledWith('cust-1', 'sms');
+    // replySms for sms sends the exact legacy shape — no channel key.
+    expect(m.sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '+15551234567' }),
+    );
+    const smsArg = m.sendSms.mock.calls[0][0] as Record<string, unknown>;
+    expect(smsArg).not.toHaveProperty('channel');
   });
 });
 
