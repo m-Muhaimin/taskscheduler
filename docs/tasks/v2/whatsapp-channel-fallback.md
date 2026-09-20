@@ -15,8 +15,12 @@ can reach the org's WhatsApp number inbound.
    number flow through the same webhook + worker pipeline (normalize
    `whatsapp:+880…` prefixes), which also opens the free-form 24h session window
    for replies.
-3. **Sender: Bring Your Own Number (BYON) — a Bangladeshi business number.**
-   Meta Business verification + WABA required either way.
+3. **Sender: Twilio-purchased number** (no BYON OTP needed — Twilio owns
+   the number, so Self Sign-up registers it as WhatsApp sender with no Meta
+   OTP call). Note: Twilio sells only **International** numbers for Bangladesh
+   (no domestic +880 inventory; e.g. +1 US) — the purchased number WILL be
+   non-BD. Fine for WhatsApp (sender country is irrelevant to delivery); see
+   the SMS-leg cost note under Risks.
 
 ## Platform constraints shaping the design (Twilio WhatsApp, current facts)
 - **WABA via Meta Business Manager**: one WABA per Twilio Account SID; unverified
@@ -32,8 +36,10 @@ can reach the org's WhatsApp number inbound.
   (`MessageStatus` = `sent` | `delivered` | `failed` | `undelivered`).
 - **Fees**: utility templates carry no Meta fee in-window (Jul 2025 change);
   marketing/authentication bill per conversation.
-- **BYON requirement**: the number must be able to receive SMS or voice calls
-  (Meta OTP verification) and must not already be registered to WhatsApp.
+- **Twilio-purchased requirement**: number must have SMS capability (any
+  country — Twilio has NO domestic +880 inventory, only International
+  numbers from $1.15/mo). No Meta OTP needed with a Twilio-owned number;
+  Self Sign-up links WABA + number in minutes.
 
 ## Current app state (verified, do not re-derive)
 - **Inbound route** `apps/api/src/routes/twilio-webhooks.ts`: signature-first,
@@ -150,8 +156,8 @@ by Meta. SIDs stored in org settings (migration 014 adds
 
 ## Implementation order (verify each phase before the next)
 - **Phase A — platform onboarding (human, blocked on Meta/Twilio):** verify Meta
-  Business Manager → Twilio Self Sign-up WhatsApp sender → BYON BD number (OTP)
-  → set inbound webhook to the same `/inbound-sms` URL → register templates
+  Business Manager → Twilio Self Sign-up WhatsApp sender → purchase number
+  (with SMS capability) → set inbound webhook to the same `/inbound-sms` URL → register templates
   (console/Content API). Can run in parallel with the code phases.
 - **Phase B — plumbing:** types (`Channel`, payload), phone-utils, webhook
   normalization, worker channel-aware replies, sms-service statusCallbackUrl,
@@ -177,12 +183,16 @@ by Meta. SIDs stored in org settings (migration 014 adds
 - No dashboard UI for channel state (ledger inspectable via DB).
 - No WhatsApp outbound for the T16 staff-ack path (staff channel stays SMS).
 - No marketing/campaign templates; only operational (utility/auth) messages.
-- No multi-sender-per-org routing (single BYON sender; WABA expansion is a
-  follow-up).
+- No multi-sender-per-org routing (single Twilio-purchased sender; WABA
+  expansion is a follow-up).
 
 ## Risks
 - Meta template approval latency (mitigate: register early in Phase A).
-- BYON number already on personal WhatsApp → must migrate/de-register first.
+- Purchased number is **international** (Twilio sells no domestic +880):
+  customers see a foreign WhatsApp contact (normal for BD users — WhatsApp
+  delivery unaffected), and the **SMS-first leg** to BD from a foreign number
+  costs ~$0.60/segment and delivers less reliably than domestic SMS — which
+  makes WhatsApp the pragmatic workhorse, exactly what this feature wants.
 - 250 unique users/day unverified cap → verify Meta BM before launch.
 - `whatsapp_opted_in` gating means fallback silently never fires for
   un-opted-in customers — surface as a ledger `blocked_optin` status, not a
