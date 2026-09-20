@@ -24,6 +24,9 @@ interface ConversationRow {
   created_at: Date;
   updated_at: Date;
   completed_at: Date | null;
+  confirmation_code_hash: string | null; // T15
+  confirmation_code_expires_at: Date | null; // T15
+  confirmation_attempts: number; // T15
 }
 
 // ---------------------------------------------------------------------------
@@ -64,6 +67,9 @@ function toState(row: ConversationRow): ConversationState {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     completedAt: row.completed_at?.toISOString() ?? null,
+    confirmationCodeHash: row.confirmation_code_hash,
+    confirmationCodeExpiresAt: row.confirmation_code_expires_at?.toISOString() ?? null,
+    confirmationAttempts: row.confirmation_attempts,
   };
 }
 
@@ -85,7 +91,7 @@ export async function createConversation(input: CreateConversationInput): Promis
   const { rows } = await getPool().query<ConversationRow>(
     `insert into ${tableName} (phone, user_id, booking_id, state, offered_slots, escalation_reason)
      values ($1, $2, $3, $4, $5, $6)
-     returning id, phone, user_id, booking_id, state, offered_slots, selected_slot, escalation_reason, created_at, updated_at, completed_at`,
+     returning id, phone, user_id, booking_id, state, offered_slots, selected_slot, escalation_reason, created_at, updated_at, completed_at, confirmation_code_hash, confirmation_code_expires_at, confirmation_attempts`,
     [
       input.phone,
       input.userId,
@@ -108,7 +114,7 @@ export async function createConversation(input: CreateConversationInput): Promis
 export async function getConversation(id: string): Promise<ConversationState | null> {
   const tableName = table();
   const { rows } = await getPool().query<ConversationRow>(
-    `select id, phone, user_id, booking_id, state, offered_slots, selected_slot, escalation_reason, created_at, updated_at, completed_at
+    `select id, phone, user_id, booking_id, state, offered_slots, selected_slot, escalation_reason, created_at, updated_at, completed_at, confirmation_code_hash, confirmation_code_expires_at, confirmation_attempts
      from ${tableName}
      where id = $1`,
     [id],
@@ -119,7 +125,7 @@ export async function getConversation(id: string): Promise<ConversationState | n
 export async function getConversationByPhone(phone: string): Promise<ConversationState | null> {
   const tableName = table();
   const { rows } = await getPool().query<ConversationRow>(
-    `select id, phone, user_id, booking_id, state, offered_slots, selected_slot, escalation_reason, created_at, updated_at, completed_at
+    `select id, phone, user_id, booking_id, state, offered_slots, selected_slot, escalation_reason, created_at, updated_at, completed_at, confirmation_code_hash, confirmation_code_expires_at, confirmation_attempts
      from ${tableName}
      where phone = $1
      order by created_at desc
@@ -180,7 +186,7 @@ export async function updateConversation(
     `update ${tableName}
      set ${sets.join(', ')}
      where id = $${idx}
-     returning id, phone, user_id, booking_id, state, offered_slots, selected_slot, escalation_reason, created_at, updated_at, completed_at`,
+     returning id, phone, user_id, booking_id, state, offered_slots, selected_slot, escalation_reason, created_at, updated_at, completed_at, confirmation_code_hash, confirmation_code_expires_at, confirmation_attempts`,
     values,
   );
 

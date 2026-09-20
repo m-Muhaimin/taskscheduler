@@ -91,6 +91,7 @@ export type Lead = {
 export type ConversationStateValue =
   | 'offering_slots'
   | 'awaiting_slot_choice'
+  | 'awaiting_confirmation_code'
   | 'completed'
   | 'escalated';
 
@@ -119,6 +120,13 @@ export type ConversationState = {
   updatedAt: IsoString;
   /** ISO 8601 timestamp, null until `state === 'completed'`. */
   completedAt: IsoString | null;
+  /** T15: pending confirm-code handshake — sha256 of the issued code (the
+   *  plaintext is never persisted), null when no code is outstanding. */
+  confirmationCodeHash: string | null;
+  /** T15: expiry of the pending confirmation code (issued with a 10-minute TTL). */
+  confirmationCodeExpiresAt: IsoString | null;
+  /** T15: consecutive wrong-code replies against the current issued code. */
+  confirmationAttempts: number;
 };
 
 /** Twilio inbound-SMS webhook body (application/x-www-form-urlencoded), §2.1. */

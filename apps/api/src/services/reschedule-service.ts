@@ -285,6 +285,18 @@ export async function confirmReschedule(
     return { success: false, error: 'No conversation found' };
   }
 
+  // T15: fail-closed confirmation-code guard. A conversation that is still
+  // awaiting its confirmation code — or carries a pending code hash — must
+  // never reach the calendar mutation: no verified code → no calendar event.
+  // The worker's gate clears the hash and restores `awaiting_slot_choice`
+  // before calling this; this guard is the defense-in-depth layer.
+  if (
+    conversation.state === 'awaiting_confirmation_code' ||
+    conversation.confirmationCodeHash
+  ) {
+    return { success: false, error: 'confirmation_required' };
+  }
+
   if (conversation.state !== 'awaiting_slot_choice') {
     return { success: false, error: 'Conversation not in awaiting_slot_choice state' };
   }

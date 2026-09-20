@@ -85,6 +85,9 @@ function makeConversation(
     createdAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),
     completedAt: completedAt ?? null,
+    confirmationCodeHash: null,
+    confirmationCodeExpiresAt: null,
+    confirmationAttempts: 0,
   };
 }
 
@@ -472,6 +475,110 @@ describe('reschedule-service', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('No conversation found');
       expect(mockConversationUpdate).not.toHaveBeenCalled();
+    });
+
+    it('fails closed (confirmation_required) when the conversation is still awaiting its confirmation code', async () => {
+      mockConversationLookup.mockResolvedValue(
+        makeConversation('awaiting_confirmation_code'),
+      );
+      mockBookingLookup.mockResolvedValue(makeBooking());
+      mockCreateEscalation.mockClear();
+      mockAuthFn.mockResolvedValue({
+        client: {
+          freebusy: { query: vi.fn() },
+          events: { list: vi.fn(), insert: vi.fn() },
+        },
+        calendarId: CALENDAR_ID,
+      });
+
+      const createEventFn = vi.fn();
+
+      const result = await confirmReschedule(
+        CUSTOMER_PHONE,
+        mockAuthFn,
+        createEventFn as Parameters<typeof confirmReschedule>[2],
+        mockBookingLookup,
+        mockConversationLookup,
+        mockConversationUpdate,
+        mockSmsSend,
+        mockCreateEscalation,
+      );
+
+      // No verified code → NO calendar event, no state write, no escalation.
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('confirmation_required');
+      expect(createEventFn).not.toHaveBeenCalled();
+      expect(mockConversationUpdate).not.toHaveBeenCalled();
+      expect(mockCreateEscalation).not.toHaveBeenCalled();
+    });
+
+    it('fails closed (confirmation_required) when a confirmation_code_hash is still pending', async () => {
+      mockConversationLookup.mockResolvedValue({
+        ...makeConversation('awaiting_slot_choice', makeOfferedSlots(), SELECTED_SLOT),
+        confirmationCodeHash: 'ab'.repeat(32), // pending sha256, never verified
+      });
+      mockBookingLookup.mockResolvedValue(makeBooking());
+      mockCreateEscalation.mockClear();
+      mockAuthFn.mockResolvedValue({
+        client: {
+          freebusy: { query: vi.fn() },
+          events: { list: vi.fn(), insert: vi.fn() },
+        },
+        calendarId: CALENDAR_ID,
+      });
+
+      const createEventFn = vi.fn();
+
+      const result = await confirmReschedule(
+        CUSTOMER_PHONE,
+        mockAuthFn,
+        createEventFn as Parameters<typeof confirmReschedule>[2],
+        mockBookingLookup,
+        mockConversationLookup,
+        mockConversationUpdate,
+        mockSmsSend,
+        mockCreateEscalation,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('confirmation_required');
+      expect(createEventFn).not.toHaveBeenCalled();
+      expect(mockConversationUpdate).not.toHaveBeenCalled();
+      expect(mockCreateEscalation).not.toHaveBeenCalled();
+    });
+
+    it('proceeds normally once the handshake cleared (hash null, awaiting_slot_choice)', async () => {
+      mockConversationLookup.mockResolvedValue(
+        makeConversation('awaiting_slot_choice', makeOfferedSlots(), SELECTED_SLOT),
+      );
+      mockConversationUpdate.mockResolvedValue(
+        makeConversation('completed', makeOfferedSlots(), SELECTED_SLOT, null, NOW.toISOString()),
+      );
+      mockBookingLookup.mockResolvedValue(makeBooking('pending'));
+      mockCreateEscalation.mockClear();
+      mockAuthFn.mockResolvedValue({
+        client: {
+          freebusy: { query: vi.fn() },
+          events: { list: vi.fn(), insert: vi.fn() },
+        },
+        calendarId: CALENDAR_ID,
+      });
+
+      const createEventFn = vi.fn().mockResolvedValue({ data: { id: 'cal-evt-after-handshake' } });
+
+      const result = await confirmReschedule(
+        CUSTOMER_PHONE,
+        mockAuthFn,
+        createEventFn as Parameters<typeof confirmReschedule>[2],
+        mockBookingLookup,
+        mockConversationLookup,
+        mockConversationUpdate,
+        mockSmsSend,
+        mockCreateEscalation,
+      );
+
+      expect(result.success).toBe(true);
+      expect(createEventFn).toHaveBeenCalledTimes(1);
     });
 
     it('returns failure when conversation is not in awaiting_slot_choice state', async () => {

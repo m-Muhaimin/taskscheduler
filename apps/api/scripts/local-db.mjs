@@ -43,6 +43,8 @@ const MIGRATIONS = [
   "007-create-customer-conversation-tables.sql",
   "008-create-appointments-table.sql",
   "009-create-google-oauth-tables.sql",
+  "010-customer-verification.sql",
+  "011-confirmation-codes.sql",
 ];
 
 /** Supabase defines these roles; creating them keeps the migration verbatim. */

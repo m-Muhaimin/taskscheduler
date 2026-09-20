@@ -37,6 +37,11 @@ export interface Customer {
   name: string | null;
   phone: string;
   email: string | null;
+  // T14 device-verification state (migration 010); null phoneVerifiedAt = unverified.
+  phoneVerifiedAt: string | null;
+  verificationCode: string | null;
+  verificationCodeExpiresAt: string | null;
+  verificationAttempts: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -114,6 +119,10 @@ interface CustomerRow {
   name: string | null;
   phone: string;
   email: string | null;
+  phone_verified_at: Date | null;
+  verification_code: string | null;
+  verification_code_expires_at: Date | null;
+  verification_attempts: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -152,6 +161,12 @@ function toCustomer(row: CustomerRow): Customer {
     name: row.name,
     phone: row.phone,
     email: row.email,
+    // Defensive ?./?? — rows written before migration 010 (or mocked rows)
+    // may lack the verification columns; treat them as unverified.
+    phoneVerifiedAt: row.phone_verified_at?.toISOString() ?? null,
+    verificationCode: row.verification_code ?? null,
+    verificationCodeExpiresAt: row.verification_code_expires_at?.toISOString() ?? null,
+    verificationAttempts: row.verification_attempts ?? 0,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -221,7 +236,9 @@ export async function findOrCreateCustomer(
        values ($1, $2, null, null, now())
        on conflict on constraint rl_customers_org_phone_key
        do update set updated_at = now()
-       returning id, organization_id, name, phone, email, created_at, updated_at`,
+       returning id, organization_id, name, phone, email, created_at, updated_at,
+                phone_verified_at, verification_code, verification_code_expires_at,
+                verification_attempts`,
       [organizationId, phone],
     );
 
