@@ -64,7 +64,8 @@ create table if not exists public.rl_escalations (
                'no_availability',
                'calendar_api_failure',
                'sms_delivery_failure',
-               'processing_error'
+               'processing_error',
+               'customer_escalation'
              )),
   customer_phone  text not null,
   content    text,

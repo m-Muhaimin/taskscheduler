@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { RidgeLineAssistant } from "@/components/assistant/RidgelineAssistant";
 import "./globals.css";
 
 const head = Bricolage_Grotesque({
@@ -46,7 +47,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
-      <body className="font-sans min-h-dvh">{children}</body>
+      <body className="font-sans min-h-dvh">
+        {children}
+        <RidgeLineAssistant />
+      </body>
     </html>
   );
 }

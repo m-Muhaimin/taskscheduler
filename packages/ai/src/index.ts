@@ -241,3 +241,12 @@ export type { ClassifyResult, ClassifyContext } from "./compose.js";
 export type { AIProvider, AiError, AiUsage, ProviderMetadata } from "./provider.js";
 export { InboundParseSchema, AiIntentSchema } from "./structured.js";
 export type { InboundParseResult, AiIntent } from "./structured.js";
+
+// RidgeLine Assistant support chat — runSupportAssistant + the grounding rules.
+export {
+  runSupportAssistant,
+  RIDGELINE_SUPPORT_SYSTEM_PROMPT,
+  buildSupportSystemPrompt,
+  supportFallbackReply,
+} from "./support-assistant.js";
+export type { SupportAssistantInput, SupportAssistantResult } from "./support-assistant.js";

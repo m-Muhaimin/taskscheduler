@@ -30,6 +30,7 @@ const MIGRATIONS = [
   "009-create-google-oauth-tables.sql",
   "010-customer-verification.sql",
   "011-confirmation-codes.sql",
+  "012-assistant-escalation-type.sql",
 ];
 
 const connectionString = process.env.DATABASE_URL;

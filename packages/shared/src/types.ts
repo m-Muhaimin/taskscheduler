@@ -204,7 +204,8 @@ export type EscalationType =
   | 'no_availability'
   | 'calendar_api_failure'
   | 'sms_delivery_failure'
-  | 'processing_error';
+  | 'processing_error'
+  | 'customer_escalation';
 
 export type EscalationStatus = 'pending' | 'resolved';
 

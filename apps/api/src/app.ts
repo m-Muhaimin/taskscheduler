@@ -3,6 +3,7 @@ import { twilioWebhooksRouter } from './routes/twilio-webhooks.js';
 import { authRouter } from './routes/auth.js';
 import { googleOauthRouter } from './routes/google-oauth.js';
 import { mountDashboardRoutes } from './routes/dashboard/index.js';
+import { assistantRouter } from './routes/assistant.js';
 
 /** Express app factory. Kept separate from the bootstrap (index.ts) so tests
  *  and the worker process can import the same app. No env-dependent clients
@@ -17,6 +18,7 @@ export function createApp(): express.Express {
   app.use('/api/auth', authRouter);
   app.use('/api/twilio/webhooks', twilioWebhooksRouter);
   mountDashboardRoutes(app);
+  app.use('/api/assistant', assistantRouter); // before the health route / any fallthrough
 
   app.get('/api/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
