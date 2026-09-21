@@ -21,9 +21,7 @@ services:
     region: oregon
 
     buildCommand: npm ci && npm run build --workspace=apps/api
-    startCommand: npm start --workspace=apps/api
-    preDeployCommand: npm run db:migrate --workspace=apps/api
-
+    startCommand: npm run db:migrate --workspace=apps/api && npm start --workspace=apps/api
     healthCheckPath: /api/health
 
     envVars:
@@ -58,23 +56,13 @@ services:
         value: gemma4:cloud
 
       - key: OLLAMA_BASE_URL
-        value: https://ollama.com
+        value: https://api.ollama.com
 
       - key: OLLAMA_API_KEY
         sync: false
+
       - key: WEB_BASE_URL
         value: https://ridgelineai.onrender.com
-      - key: AI_PROVIDER
-        value: ollama
-
-      - key: OLLAMA_MODEL
-        value: gemma4:cloud
-
-      - key: OLLAMA_BASE_URL
-        value: https://ollama.com
-
-      - key: OLLAMA_API_KEY
-        sync: false
 
 
   # ----------------------------------------------------------------
@@ -86,8 +74,7 @@ services:
     region: oregon
 
     buildCommand: npm ci && npm run build --workspace=apps/api
-    startCommand: npm run worker:start --workspace=apps/api
-    preDeployCommand: npm run db:migrate --workspace=apps/api
+    startCommand: npm run db:migrate --workspace=apps/api && npm run worker:start --workspace=apps/api
 
     envVars:
       - key: DATABASE_URL
