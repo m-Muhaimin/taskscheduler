@@ -54,6 +54,9 @@ export function EscalationsList({ escalations }: { escalations: EscalationItem[]
                   {e.content}
                 </p>
               )}
+              {e.messageSid && (
+                <p className="text-[11px] text-ink-faint font-mono mt-1">{e.messageSid}</p>
+              )}
             </div>
             <div className="text-right shrink-0">
               <p className="text-[11px] text-ink-faint">{e.createdAtDisplay}</p>

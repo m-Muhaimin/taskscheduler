@@ -7,7 +7,7 @@ export interface InboxItem {
   lastMessage: string;
   suggestion: string;
   time: string;
-  channel: "SMS" | "Voice" | "Web";
+  channel: "SMS" | "Voice" | "Web" | "WhatsApp";
 }
 
 export interface Appointment {
@@ -56,6 +56,7 @@ export interface EscalationItem {
   createdAtDisplay: string;
   resolvedAt: string | null;
   resolvedAtDisplay: string | null;
+  messageSid?: string | null;
 }
 
 export interface MessageRow {
@@ -70,4 +71,5 @@ export interface MessageRow {
   messageSid: string | null;
   createdAt: string;
   createdAtDisplay: string;
+  customerName?: string | null;
 }

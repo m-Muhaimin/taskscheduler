@@ -70,6 +70,7 @@ export function MessagesList({ messages }: { messages: MessageRow[] }) {
                 <th scope="col" className="font-medium px-4 py-2.5">Status</th>
                 <th scope="col" className="font-medium px-4 py-2.5">Error</th>
                 <th scope="col" className="font-medium px-4 py-2.5 text-right">Sent</th>
+                <th scope="col" className="font-medium px-4 py-2.5">Recipient</th>
               </tr>
             </thead>
             <tbody className="divided">
@@ -100,6 +101,9 @@ export function MessagesList({ messages }: { messages: MessageRow[] }) {
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right text-ink-faint text-[11.5px]">{m.createdAtDisplay}</td>
+                  <td className="px-4 py-2.5 text-ink-faint text-[11.5px]">
+                    {m.customerName ?? m.toPhone}
+                  </td>
                 </tr>
               ))}
             </tbody>
