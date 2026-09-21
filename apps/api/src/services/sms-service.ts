@@ -98,7 +98,9 @@ export async function sendSms(input: SendSmsInput): Promise<SentSms> {
     ? (process.env.TWILIO_MESSAGE_STATUS_CALLBACK_URL ??
       (process.env.API_BASE_URL
         ? `${process.env.API_BASE_URL.replace(/\/$/, '')}/api/twilio/webhooks/status`
-        : undefined))
+        : process.env.RENDER_EXTERNAL_URL
+          ? `${process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '')}/api/twilio/webhooks/status`
+          : undefined))
     : undefined;
   const statusCallbackUrl = input.statusCallbackUrl ?? defaultStatusCallbackUrl;
 

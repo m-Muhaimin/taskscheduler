@@ -46,6 +46,9 @@ export async function handleAssistantTurn(
   const customerPhone = input.customerPhone ?? 'unknown';
 
   // 1. Emergency pre-check FIRST: escalation row, no provider call, no ledger.
+  //    An escalation row is always created as an audit trail even for anonymous
+  //    requests (phone='unknown'); the row is attributed to an org via the
+  //    two-arm phone rule when a real phone is available.
   if (EMERGENCY_RE.test(lastContent)) {
     await createEscalation({
       type: 'customer_escalation',

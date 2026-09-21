@@ -61,6 +61,21 @@ services:
       - key: OLLAMA_API_KEY
         sync: false
 
+      - key: API_BASE_URL
+        fromService:
+          name: ridgeline-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+
+      - key: TWILIO_WHATSAPP_NUMBER
+        sync: false
+
+      - key: WHATSAPP_TEMPLATE_GENERIC
+        value: ""
+
+      - key: WHATSAPP_TEMPLATE_BOOKING_CONFIRMATION
+        value: ""
+
       - key: WEB_BASE_URL
         value: https://ridgelineai.onrender.com
 

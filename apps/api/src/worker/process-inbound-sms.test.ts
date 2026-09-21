@@ -26,6 +26,7 @@ const m = vi.hoisted(() => ({
   updateBookingTimes: vi.fn(),
   findUserBookingsInWindow: vi.fn(),
   createConversation: vi.fn(),
+  getOrgContextByUserId: vi.fn(),
   poolQuery: vi.fn(), // T14: the worker's own verification-gate pg pool
   recordWhatsAppOptIn: vi.fn(), // T18: whatsapp opt-in write point
 }));
@@ -39,6 +40,7 @@ vi.mock('../services/conversation-domain.js', () => ({
 }));
 vi.mock('../services/organization-service.js', () => ({
   resolveOrganizationIdByTwilioNumber: m.resolveOrganizationIdByTwilioNumber,
+  getOrgContextByUserId: m.getOrgContextByUserId,
 }));
 vi.mock('../services/staff-phone-service.js', () => ({
   resolveStaffByPhone: m.resolveStaffByPhone,
@@ -132,6 +134,7 @@ beforeEach(() => {
   m.findOrCreateConversation.mockResolvedValue({ id: 'conv-1', status: 'open' });
   m.appendMessage.mockResolvedValue({ id: 'msg-1' });
   m.resolveOrganizationIdByTwilioNumber.mockResolvedValue('org-1');
+  m.getOrgContextByUserId.mockResolvedValue({ timezone: 'Asia/Dhaka' });
   m.resolveStaffByPhone.mockResolvedValue(null); // T16: default non-staff
   m.classifyStep.mockResolvedValue({
     intentResult: { intent: 'unknown', confidence: 0 },
