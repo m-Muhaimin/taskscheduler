@@ -22,7 +22,7 @@ export default function MessagesPage() {
     <div>
       <PageHeader
         title="Messages"
-        description="Every SMS and WhatsApp message the AI sends, with live delivery status."
+        description="Every SMS the AI sends, with live delivery status."
         actions={
           failedOrEscalated > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-md border border-danger/30 bg-danger-soft px-2.5 py-1 text-[11px] font-medium text-danger">

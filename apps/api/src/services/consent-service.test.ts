@@ -30,93 +30,101 @@ afterEach(() => {
   vi.resetModules();
 });
 
-const CONSENT_ROW = {
-  id: 'cust-1',
-  phone_verified_at: new Date('2026-09-01T00:00:00Z'),
-  whatsapp_opted_in: true,
-};
-
 describe('consent-service', () => {
-  it('getCustomerByPhone is a READ-ONLY select on rl_customers (id, phone_verified_at, whatsapp_opted_in)', async () => {
-    mocks.query.mockResolvedValue({ rows: [CONSENT_ROW] });
+  it('hasSmsOptIn returns true/false from the customer flag', async () => {
+    mocks.query.mockResolvedValue({ rows: [{ sms_opted_in: true }] });
+    await expect((await loadService()).hasSmsOptIn('cust-1')).resolves.toBe(true);
 
-    const customer = await (await loadService()).getCustomerByPhone('org-1', '+8801712345678');
-
-    expect(customer).toEqual({
-      id: 'cust-1',
-      phoneVerifiedAt: '2026-09-01T00:00:00.000Z',
-      whatsappOptedIn: true,
-    });
-    const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('select id, phone_verified_at, whatsapp_opted_in');
-    expect(sql).toContain('from public.rl_customers');
-    // Read-only: NO insert/update/create anywhere in the statement.
-    expect(/\b(insert|update|create)\b/i.test(sql)).toBe(false);
-    expect(params).toEqual(['org-1', '+8801712345678']);
+    mocks.query.mockResolvedValue({ rows: [{ sms_opted_in: false }] });
+    await expect((await loadService()).hasSmsOptIn('cust-1')).resolves.toBe(false);
   });
 
-  it('getCustomerByPhone returns null when no customer row exists', async () => {
+  it('hasSmsOptIn returns false when no customer row exists', async () => {
+    mocks.query.mockResolvedValue({ rows: [] });
+    await expect((await loadService()).hasSmsOptIn('nope')).resolves.toBe(false);
+  });
+
+  it('recordSmsOptIn is one idempotent update setting the flag AND the timestamp', async () => {
     mocks.query.mockResolvedValue({ rows: [] });
 
-    await expect(
-      (await loadService()).getCustomerByPhone('org-1', '+8801712345678'),
-    ).resolves.toBeNull();
-  });
-
-  it('getCustomerByPhone maps a null phone_verified_at (unverified customer)', async () => {
-    mocks.query.mockResolvedValue({
-      rows: [{ ...CONSENT_ROW, phone_verified_at: null, whatsapp_opted_in: false }],
-    });
-
-    const customer = await (await loadService()).getCustomerByPhone('org-1', '+8801712345678');
-    expect(customer).toEqual({
-      id: 'cust-1',
-      phoneVerifiedAt: null,
-      whatsappOptedIn: false,
-    });
-  });
-
-  it('recordWhatsAppOptIn is an idempotent update setting the flag true with now()', async () => {
-    mocks.query.mockResolvedValue({ rows: [] });
-
-    await (await loadService()).recordWhatsAppOptIn('cust-1');
+    await (await loadService()).recordSmsOptIn('cust-1');
 
     const [sql, params] = mocks.query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('update public.rl_customers');
-    expect(sql).toContain('whatsapp_opted_in = true');
-    expect(sql).toContain('whatsapp_opted_in_at = now()');
+    expect(sql).toContain('sms_opted_in = true');
+    expect(sql).toContain('sms_opted_in_at = now()');
     expect(sql).toContain('where id = $1');
+    // Exactly one statement — no read-then-write, no upsert, no second query.
+    expect(mocks.query).toHaveBeenCalledTimes(1);
     expect(params).toEqual(['cust-1']);
   });
 
-  it('hasWhatsAppOptIn returns true/false from the customer flag', async () => {
-    mocks.query.mockResolvedValue({ rows: [{ whatsapp_opted_in: true }] });
-    await expect((await loadService()).hasWhatsAppOptIn('cust-1')).resolves.toBe(true);
-
-    mocks.query.mockResolvedValue({ rows: [{ whatsapp_opted_in: false }] });
-    await expect((await loadService()).hasWhatsAppOptIn('cust-1')).resolves.toBe(false);
-  });
-
-  it('hasWhatsAppOptIn returns false when no customer row exists', async () => {
-    mocks.query.mockResolvedValue({ rows: [] });
-    await expect((await loadService()).hasWhatsAppOptIn('nope')).resolves.toBe(false);
-  });
-
-  it('honors the CUSTOMERS_TABLE env override', async () => {
+  it('honors the CUSTOMERS_TABLE env override in both functions (bare name, public. interpolated)', async () => {
     process.env.CUSTOMERS_TABLE = 'other_prefix_customers';
-    mocks.query.mockResolvedValue({ rows: [] });
+    mocks.query.mockResolvedValue({ rows: [{ sms_opted_in: true }] });
 
-    await (await loadService()).getCustomerByPhone('org-1', '+8801712345678');
+    const svc = await loadService();
+    await svc.hasSmsOptIn('cust-1');
+    await svc.recordSmsOptIn('cust-1');
+
+    const [readSql] = mocks.query.mock.calls[0] as [string];
+    const [writeSql, writeParams] = mocks.query.mock.calls[1] as [string, unknown[]];
+    // Repo convention (dashboard/escalation/inbox/process-outbound-sms): the
+    // env var is a BARE name and this module interpolates the public schema.
+    expect(readSql).toContain('from public.other_prefix_customers');
+    expect(writeSql).toContain('update public.other_prefix_customers');
+    expect(writeParams).toEqual(['cust-1']);
+  });
+
+  it('defaults to the bare rl_customers with the public schema interpolated', async () => {
+    mocks.query.mockResolvedValue({ rows: [{ sms_opted_in: false }] });
+
+    const { hasSmsOptIn } = await loadService();
+    await hasSmsOptIn('cust-1');
 
     const [sql] = mocks.query.mock.calls[0] as [string];
-    expect(sql).toContain('from public.other_prefix_customers');
+    expect(sql).toContain('from public.rl_customers');
+  });
+
+  it('accepts a public.-qualified CUSTOMERS_TABLE without double-qualifying it', async () => {
+    // A deployer copying this module's own default into the env must not end
+    // up with `public.public.rl_customers` in the query.
+    process.env.CUSTOMERS_TABLE = 'public.rl_customers';
+    mocks.query.mockResolvedValue({ rows: [{ sms_opted_in: true }] });
+
+    const svc = await loadService();
+    await svc.hasSmsOptIn('cust-1');
+    await svc.recordSmsOptIn('cust-1');
+
+    const [readSql] = mocks.query.mock.calls[0] as [string];
+    const [writeSql] = mocks.query.mock.calls[1] as [string];
+    expect(readSql).toContain('from public.rl_customers');
+    expect(writeSql).toContain('update public.rl_customers');
+    expect(readSql).not.toContain('public.public');
+    expect(writeSql).not.toContain('public.public');
+  });
+
+  it('rejects a CUSTOMERS_TABLE that is not a SQL identifier, before any query', async () => {
+    // Interpolated into SQL, so it is validated. No query may be attempted.
+    for (const bad of ['rl_customers; drop table bookings', 'a b', "cust'omers", '1customers']) {
+      process.env.CUSTOMERS_TABLE = bad;
+
+      const { hasSmsOptIn, recordSmsOptIn } = await loadService();
+      await expect(hasSmsOptIn('cust-1')).rejects.toThrow(
+        /CUSTOMERS_TABLE must be a bare or schema-qualified SQL identifier/,
+      );
+      await expect(recordSmsOptIn('cust-1')).rejects.toThrow(
+        /CUSTOMERS_TABLE must be a bare or schema-qualified SQL identifier/,
+      );
+    }
+    expect(mocks.query).not.toHaveBeenCalled();
   });
 
   it('throws when DATABASE_URL is missing (env-free boot guard)', async () => {
     delete process.env.DATABASE_URL;
 
-    const { getCustomerByPhone } = await loadService();
-    await expect(getCustomerByPhone('org-1', '+8801712345678')).rejects.toThrow(
+    const { hasSmsOptIn } = await loadService();
+    await expect(hasSmsOptIn('cust-1')).rejects.toThrow(
       /DATABASE_URL not configured/,
     );
     expect(mocks.query).not.toHaveBeenCalled();

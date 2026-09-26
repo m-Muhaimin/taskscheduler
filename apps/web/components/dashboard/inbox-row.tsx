@@ -13,7 +13,7 @@ const BAR_COLOR: Record<InboxItem["state"], string> = {
   handled: "var(--success)",
 };
 
-const CHANNEL_ICON = { SMS: MessageSquare, Voice: Phone, Web: Globe, WhatsApp: MessageSquare } as const;
+const CHANNEL_ICON = { SMS: MessageSquare, Voice: Phone, Web: Globe } as const;
 
 export function StateChip({ state }: { state: InboxItem["state"] }) {
   if (state === "attention") return <Chip tone="danger">Needs attention</Chip>;

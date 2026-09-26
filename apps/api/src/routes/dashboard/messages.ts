@@ -6,7 +6,7 @@ import type { DashboardApiErrorResponse, MessageDeliveryStatus } from '@tradesch
 
 const router = Router();
 
-const VALID_CHANNELS = new Set(['sms', 'whatsapp']);
+const VALID_CHANNELS = new Set(['sms']);
 const VALID_STATUSES: ReadonlySet<string> = new Set([
   'queued', 'sent', 'delivered', 'failed', 'retried', 'escalated', 'blocked_optin',
 ]);
@@ -40,7 +40,7 @@ router.get('/', requireAuth, async (req, res) => {
     const page = clampInt(req.query.page, 1, 1, Number.MAX_SAFE_INTEGER);
     const pageSize = clampInt(req.query.pageSize, 20, 1, 100);
     const { messages, total } = await getOutboundMessages(ctx.organizationId, {
-      ...(rawChannel && rawChannel !== '' ? { channel: rawChannel as 'sms' | 'whatsapp' } : {}),
+      ...(rawChannel && rawChannel !== '' ? { channel: rawChannel as 'sms' } : {}),
       ...(rawStatus && rawStatus !== '' ? { status: rawStatus as MessageDeliveryStatus } : {}),
       page,
       pageSize,

@@ -28,7 +28,7 @@ const m = vi.hoisted(() => ({
   createConversation: vi.fn(),
   getOrgContextByUserId: vi.fn(),
   poolQuery: vi.fn(), // T14: the worker's own verification-gate pg pool
-  recordWhatsAppOptIn: vi.fn(), // T18: whatsapp opt-in write point
+  recordSmsOptIn: vi.fn(), // consent write point (SMS only)
 }));
 
 vi.mock('pg', () => ({ Pool: class MockPool { query = m.poolQuery; } }));
@@ -70,7 +70,7 @@ vi.mock('../services/sms-service.js', () => ({
   sendSms: m.sendSms,
 }));
 vi.mock('../services/consent-service.js', () => ({
-  recordWhatsAppOptIn: m.recordWhatsAppOptIn,
+  recordSmsOptIn: m.recordSmsOptIn,
 }));
 vi.mock('../services/reschedule-service.js', () => ({
   initiateRescheduleFlow: m.initiateRescheduleFlow,
@@ -941,105 +941,6 @@ describe('processInboundSms � CP03 wiring', () => {
   });
 });
 
-describe('processInboundSms: T17 WhatsApp fallback channel (phase B plumbing)', () => {
-  it('whatsapp From+To: org lookup on bare To, whatsapp conversation, same-channel reply', async () => {
-    const worker = await loadWorker();
-    m.classifyStep.mockResolvedValue({
-      intentResult: { intent: 'help', confidence: 1 },
-      aiUsage: null,
-      source: 'rule',
-      requestId: 'rid-wa',
-    });
-
-    await worker.processInboundSms(job({
-      From: 'whatsapp:+8801712345678',
-      To: 'whatsapp:+8809612345678',
-      Body: 'help',
-      MessageSid: 'SM1234567890',
-    }));
-
-    // Org lookup runs on the BARE To (rl_twilio_numbers stores bare E.164).
-    expect(m.resolveOrganizationIdByTwilioNumber).toHaveBeenCalledWith('+8809612345678');
-    // Customer keyed on the bare From; conversation created on channel whatsapp.
-    expect(m.findOrCreateCustomer).toHaveBeenCalledWith('org-1', '+8801712345678');
-    expect(m.findOrCreateConversation).toHaveBeenCalledWith('cust-1', 'whatsapp');
-    expect(m.appendMessage).toHaveBeenCalledWith(
-      'conv-1',
-      'inbound',
-      'help',
-      'SM1234567890',
-      { From: '+8801712345678', To: '+8809612345678' },
-    );
-    // Reply goes out on the SAME channel: whatsapp:+ address + channel flag.
-    expect(m.sendSms).toHaveBeenCalledTimes(1);
-    expect(m.sendSms).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: 'whatsapp:+8801712345678',
-        channel: 'whatsapp',
-      }),
-    );
-    expect(m.createEscalation).not.toHaveBeenCalled();
-  });
-
-  it('whatsapp From + bare-phone To: inconsistent pair is an SMS fallback, never guessed', async () => {
-    const worker = await loadWorker();
-    m.classifyStep.mockResolvedValue({
-      intentResult: { intent: 'help', confidence: 1 },
-      aiUsage: null,
-      source: 'rule',
-      requestId: 'rid-wa-fallback',
-    });
-
-    await worker.processInboundSms(job({
-      From: 'whatsapp:+8801712345678',
-      To: '+15559876543',
-      Body: 'help',
-    }));
-
-    // To lookup uses the bare To as always.
-    expect(m.resolveOrganizationIdByTwilioNumber).toHaveBeenCalledWith('+15559876543');
-    // Channel downgraded to sms: conversation + reply are plain SMS.
-    expect(m.findOrCreateConversation).toHaveBeenCalledWith('cust-1', 'sms');
-    expect(m.sendSms).toHaveBeenCalledTimes(1);
-    expect(m.sendSms).toHaveBeenCalledWith(
-      expect.objectContaining({ to: '+8801712345678' }),
-    );
-  });
-
-  it('whatsapp non-E.164 From escalates (normalized gate still enforced)', async () => {
-    const worker = await loadWorker();
-
-    await worker.processInboundSms(job({ From: 'whatsapp:not-a-phone', Body: 'R', To: 'whatsapp:+8809612345678' }));
-
-    expect(m.createEscalation).toHaveBeenCalledTimes(1);
-    expect(m.createEscalation).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'processing_error' }),
-    );
-    expect(m.findOrCreateCustomer).not.toHaveBeenCalled();
-    expect(m.resolveOrganizationIdByTwilioNumber).not.toHaveBeenCalled();
-  });
-
-  it('sms traffic is unchanged: no channel key in replies (byte-for-byte legacy)', async () => {
-    const worker = await loadWorker();
-    m.classifyStep.mockResolvedValue({
-      intentResult: { intent: 'help', confidence: 1 },
-      aiUsage: null,
-      source: 'rule',
-      requestId: 'rid-sms-legacy',
-    });
-
-    await worker.processInboundSms(job({ From: '+15551234567', Body: 'help', To: '+15559876543' }));
-
-    expect(m.findOrCreateConversation).toHaveBeenCalledWith('cust-1', 'sms');
-    // replySms for sms sends the exact legacy shape — no channel key.
-    expect(m.sendSms).toHaveBeenCalledWith(
-      expect.objectContaining({ to: '+15551234567' }),
-    );
-    const smsArg = m.sendSms.mock.calls[0][0] as Record<string, unknown>;
-    expect(smsArg).not.toHaveProperty('channel');
-  });
-});
-
 describe('processInboundSms: T16 staff-phone operator flow', () => {
   it('staff From -> staff_sms escalation + ack, NO customer row, NO classify', async () => {
     const worker = await loadWorker();
@@ -1110,14 +1011,43 @@ describe('processInboundSms: T16 staff-phone operator flow', () => {
   });
 });
 
-describe('processInboundSms: T18 WhatsApp opt-in write points', () => {
-  /** Unverified customer row (same shape as the T14 gate tests). */
-  function unverifiedCustomer(overrides: Record<string, unknown> = {}) {
-    return {
+describe('processInboundSms: SMS consent write point', () => {
+  it('records the opt-in for a valid inbound customer SMS before classifying', async () => {
+    const worker = await loadWorker();
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', To: '+15559876543', MessageSid: 'SM1', Body: 'need to move my appointment' }),
+    );
+
+    expect(m.recordSmsOptIn).toHaveBeenCalledTimes(1);
+    expect(m.recordSmsOptIn).toHaveBeenCalledWith('cust-1');
+    // The opt-in is written before the intent is classified, so the gate in
+    // sms-service.ts can already see it for any send this flow triggers.
+    expect(m.classifyStep).toHaveBeenCalled();
+  });
+
+  it('is idempotent: a repeat message from the same customer re-records without failing', async () => {
+    const worker = await loadWorker();
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', To: '+15559876543', MessageSid: 'SM1', Body: 'hello' }),
+    );
+    await worker.processInboundSms(
+      job({ From: '+15551234567', To: '+15559876543', MessageSid: 'SM2', Body: 'hello again' }),
+    );
+
+    expect(m.recordSmsOptIn).toHaveBeenCalledTimes(2);
+    expect(m.recordSmsOptIn).toHaveBeenNthCalledWith(1, 'cust-1');
+    expect(m.recordSmsOptIn).toHaveBeenNthCalledWith(2, 'cust-1');
+  });
+
+  it('records the opt-in even while the verification gate is still running', async () => {
+    const worker = await loadWorker();
+    m.findOrCreateCustomer.mockResolvedValue({
       id: 'cust-1',
       organizationId: 'org-1',
       name: null,
-      phone: '+8801712345678',
+      phone: '+15551234567',
       email: null,
       phoneVerifiedAt: null,
       verificationCode: '246810',
@@ -1125,153 +1055,658 @@ describe('processInboundSms: T18 WhatsApp opt-in write points', () => {
       verificationAttempts: 0,
       createdAt: '2026-09-01T00:00:00.000Z',
       updatedAt: '2026-09-01T00:00:00.000Z',
+    });
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', To: '+15559876543', MessageSid: 'SM1', Body: 'hello' }),
+    );
+
+    // Consent is recorded; classify does not run (the gate owns this message).
+    expect(m.recordSmsOptIn).toHaveBeenCalledWith('cust-1');
+    expect(m.classifyStep).not.toHaveBeenCalled();
+  });
+
+  it('does NOT record the opt-in for a staff phone (operator flow returns first)', async () => {
+    const worker = await loadWorker();
+    m.resolveStaffByPhone.mockResolvedValue({ tradespersonId: 'trades-1', userId: 'user-1' });
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', To: '+15559876543', MessageSid: 'SM1', Body: 'on my way' }),
+    );
+
+    expect(m.recordSmsOptIn).not.toHaveBeenCalled();
+    expect(m.findOrCreateCustomer).not.toHaveBeenCalled();
+  });
+
+  it('a consent write failure FAILS VISIBLY: the job rejects and never classifies', async () => {
+    const worker = await loadWorker();
+    m.recordSmsOptIn.mockRejectedValue(new Error('consent db down'));
+
+    await expect(
+      worker.processInboundSms(
+        job({ From: '+15551234567', To: '+15559876543', MessageSid: 'SM1', Body: 'hello' }),
+      ),
+    ).rejects.toThrow('consent db down');
+
+    expect(m.classifyStep).not.toHaveBeenCalled();
+  });
+
+  it('does not record the opt-in for a non-E.164 sender (rejected before any customer write)', async () => {
+    const worker = await loadWorker();
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567:ext1', To: '+15559876543', MessageSid: 'SM1', Body: 'hello' }),
+    );
+
+    expect(m.recordSmsOptIn).not.toHaveBeenCalled();
+    expect(m.createEscalation).toHaveBeenCalledTimes(1);
+  });
+
+  // --- The gated-send interaction -----------------------------------------
+  // handleRescheduleIntent's flowSmsSender sends with a `customerId` and NO
+  // `kind`, so sms-service.ts's outbound consent gate applies to it. These two
+  // tests stand in for that gate and assert the ordering contract this file
+  // can prove: the opt-in record exists BEFORE any gated send in the same
+  // inbound turn, and it is written once per inbound job, not once per send.
+
+  it('a gated reply send (customerId, no kind) does not throw: the opt-in write lands first', async () => {
+    const worker = await loadWorker();
+    let optedIn = false;
+    m.recordSmsOptIn.mockImplementation(async () => {
+      optedIn = true;
+    });
+    // Mirror of sms-service.ts's gate: no customerId passes, a transactional
+    // kind passes, anything else needs a logged consent record or it throws.
+    m.sendSms.mockImplementation(async (input: { customerId?: string; kind?: string }) => {
+      if (input.customerId && !input.kind && !optedIn) {
+        throw new Error(`SMS consent required for ${input.customerId}`);
+      }
+      return { messageSid: 'SM-sent', status: 'queued' };
+    });
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'reschedule', confidence: 0.95 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
+    m.getConversationByPhone.mockResolvedValue(null);
+    m.initiateRescheduleFlow.mockImplementation(
+      async (_bookingId, _phone, _auth, _freebusy, _events, _byId, _profile, smsSendFn) => {
+        await smsSendFn({ to: '+15551234567', body: 'Here are three times that work.' });
+      },
+    );
+
+    await expect(
+      worker.processInboundSms(
+        job({ From: '+15551234567', To: '+15559876543', MessageSid: 'SM1', Body: 'need to move my appointment' }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(m.recordSmsOptIn).toHaveBeenCalledTimes(1);
+    // The send really is a gated one: customerId present, kind absent.
+    const gated = m.sendSms.mock.calls[0][0] as { customerId?: string; kind?: string; organizationId?: string };
+    expect(gated.customerId).toBe('cust-1');
+    expect(gated.organizationId).toBe('org-1');
+    expect(gated.kind).toBeUndefined();
+    // Ordering: the opt-in write precedes the send it exists to satisfy.
+    expect(m.recordSmsOptIn.mock.invocationCallOrder[0]).toBeLessThan(
+      m.sendSms.mock.invocationCallOrder[0],
+    );
+    expect(m.createEscalation).not.toHaveBeenCalled();
+  });
+
+  it('records the opt-in ONCE per inbound job, not once per gated send', async () => {
+    const worker = await loadWorker();
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent: 'reschedule', confidence: 0.95 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid',
+    });
+    m.getConversationByPhone.mockResolvedValue(null);
+    m.initiateRescheduleFlow.mockImplementation(
+      async (_bookingId, _phone, _auth, _freebusy, _events, _byId, _profile, smsSendFn) => {
+        await smsSendFn({ to: '+15551234567', body: 'Here are three times that work.' });
+        await smsSendFn({ to: '+15551234567', body: 'Reply 1, 2, or 3 to pick one.' });
+      },
+    );
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', To: '+15559876543', MessageSid: 'SM1', Body: 'need to move my appointment' }),
+    );
+
+    // Two gated sends, one consent write: the opt-in is per inbound, not per send.
+    expect(m.sendSms).toHaveBeenCalledTimes(2);
+    expect(m.recordSmsOptIn).toHaveBeenCalledTimes(1);
+    expect(m.recordSmsOptIn).toHaveBeenCalledWith('cust-1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C1 repair: the consent gate in sms-service.ts exempts any send that does not
+// name a customer. Before this repair 7 of the 8 automated customer-facing
+// sends in this file rode that exemption, so the gate was documentation rather
+// than enforcement. These tests assert the threading: every automated
+// customer-facing send names the in-scope customer and its MessagingKind, and
+// the operator-facing / dev-harness sends stay exempt on purpose.
+// ---------------------------------------------------------------------------
+
+/** The five transactional OTP kinds, verbatim from sms-service.ts. */
+const TRANSACTIONAL_OTP_KINDS = new Set([
+  'verification_code',
+  'confirm_code',
+  'number_verified',
+  'code_mismatch',
+  'confirm_failed',
+]);
+
+interface GateInput {
+  to?: string;
+  body?: string;
+  kind?: string;
+  customerId?: string;
+  organizationId?: string;
+}
+
+interface GateState {
+  optIn: boolean;
+  /** Kinds the mirror gate refused — must stay empty on every happy path. */
+  refused: string[];
+}
+
+describe('processInboundSms: automated sends are consent-gated', () => {
+  /**
+   * Stand-in for sms-service.ts's assertSmsConsent. `../services/sms-service.js`
+   * is mocked wholesale in this file, so the real gate cannot run here; this
+   * mirrors it exactly — no customerId → ungated, a transactional OTP kind →
+   * ungated, anything else naming a customer → refused unless a consent record
+   * exists. `optIn` starts false and flips only when recordSmsOptIn runs, so a
+   * send admitted with optIn still false was admitted by the ALLOWLIST.
+   */
+  function mountConsentGate(): GateState {
+    const state: GateState = { optIn: false, refused: [] };
+    m.recordSmsOptIn.mockImplementation(async () => {
+      state.optIn = true;
+    });
+    m.sendSms.mockImplementation(async (input: GateInput) => {
+      if (
+        input.customerId &&
+        !TRANSACTIONAL_OTP_KINDS.has(input.kind as string) &&
+        !state.optIn
+      ) {
+        state.refused.push(input.kind ?? '(no kind)');
+        throw new Error('sendSms: blocked — no SMS consent record for this customer');
+      }
+      return { messageSid: 'SM-gate', status: 'queued' };
+    });
+    return state;
+  }
+
+  /** The worst case for the gate: the consent write lands and records nothing. */
+  function mountGateWithoutConsent(): GateState {
+    const state = mountConsentGate();
+    m.recordSmsOptIn.mockResolvedValue(undefined);
+    return state;
+  }
+
+  /** sendSms invocations recorded for the current job, in order. */
+  function sends(): GateInput[] {
+    return m.sendSms.mock.calls.map((call) => call[0] as GateInput);
+  }
+
+  function classifyAs(intent: string) {
+    m.classifyStep.mockResolvedValue({
+      intentResult: { intent, confidence: 0.99 },
+      aiUsage: null,
+      source: 'rule',
+      requestId: 'rid-gate',
+    });
+  }
+
+  function unverifiedRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'cust-1',
+      organizationId: 'org-1',
+      name: null,
+      phone: '+15551234567',
+      email: null,
+      phoneVerifiedAt: null,
+      verificationCode: null,
+      verificationCodeExpiresAt: null,
+      verificationAttempts: 0,
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
       ...overrides,
     };
   }
 
-  const WA_JOB = {
-    From: 'whatsapp:+8801712345678',
-    To: 'whatsapp:+8809612345678',
-    MessageSid: 'SM1234567890',
-  };
+  function stateRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'state-1',
+      phone: '+15551234567',
+      userId: 'user-1',
+      bookingId: 'apt-1',
+      state: 'awaiting_confirmation_code',
+      offeredSlots: null,
+      selectedSlot: null,
+      escalationReason: null,
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+      completedAt: null,
+      confirmationCodeHash: null,
+      confirmationCodeExpiresAt: null,
+      confirmationAttempts: 0,
+      ...overrides,
+    };
+  }
 
-  it('WA keyword on whatsapp: records the opt-in, replies with a confirmation, and completes WITHOUT classifying', async () => {
+  function confirmedBooking() {
+    return {
+      success: true,
+      booking: BOOKING,
+      conversation: { id: 'state-1', state: 'completed' },
+    };
+  }
+
+  /** The single send of the job, asserted to name the customer and its kind. */
+  function expectGatedSend(kind: string) {
+    const list = sends();
+    expect(list).toHaveLength(1);
+    expect(list[0].customerId).toBe('cust-1');
+    expect(list[0].kind).toBe(kind);
+    expect(list[0].organizationId).toBe('org-1');
+  }
+
+  it('help: names the customer and the help kind', async () => {
     const worker = await loadWorker();
-    m.classifyStep.mockResolvedValue({
-      intentResult: { intent: 'help', confidence: 1 },
-      aiUsage: null,
-      source: 'rule',
-      requestId: 'rid-wa-keyword',
-    });
-
-    await worker.processInboundSms(job({ ...WA_JOB, Body: 'WA' }));
-
-    expect(m.recordWhatsAppOptIn).toHaveBeenCalledWith('cust-1');
-    // Exactly one SMS: the opt-in confirmation (no intent dispatch afterwards).
-    expect(m.sendSms).toHaveBeenCalledTimes(1);
-    expect(m.sendSms).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: 'whatsapp:+8801712345678',
-        channel: 'whatsapp',
-        body: 'WhatsApp updates on. Reply STOP any time.',
-      }),
-    );
-    // A control message is never an intent.
-    expect(m.classifyStep).not.toHaveBeenCalled();
-    expect(m.createEscalation).not.toHaveBeenCalled();
-  });
-
-  it('WA keyword is case-insensitive and trimmed', async () => {
-    const worker = await loadWorker();
-
-    await worker.processInboundSms(job({ ...WA_JOB, Body: '  wa  ' }));
-
-    expect(m.recordWhatsAppOptIn).toHaveBeenCalledWith('cust-1');
-    expect(m.classifyStep).not.toHaveBeenCalled();
-  });
-
-  it('WA opt-in record failure FAILS VISIBLY (explicit consent must persist) and never classifies', async () => {
-    const worker = await loadWorker();
-    m.recordWhatsAppOptIn.mockRejectedValue(new Error('db down'));
-
-    await expect(
-      worker.processInboundSms(job({ ...WA_JOB, Body: 'WA' })),
-    ).rejects.toThrow('db down');
-    expect(m.classifyStep).not.toHaveBeenCalled();
-  });
-
-  it('WA on the sms channel is NOT special-cased: classified as normal traffic, no opt-in', async () => {
-    const worker = await loadWorker();
-    m.classifyStep.mockResolvedValue({
-      intentResult: { intent: 'help', confidence: 1 },
-      aiUsage: null,
-      source: 'rule',
-      requestId: 'rid-wa-sms',
-    });
-
-    await worker.processInboundSms(job({ From: '+15551234567', Body: 'WA', To: '+15559876543' }));
-
-    expect(m.recordWhatsAppOptIn).not.toHaveBeenCalled();
-    expect(m.classifyStep).toHaveBeenCalledTimes(1);
-    expect(m.sendSms).toHaveBeenCalledTimes(1); // help reply
-  });
-
-  it('verified-now on whatsapp (customer completes the gate this message): auto opt-in recorded, then classify', async () => {
-    const worker = await loadWorker();
-    m.findOrCreateCustomer.mockResolvedValue(unverifiedCustomer());
-    m.classifyStep.mockResolvedValue({
-      intentResult: { intent: 'help', confidence: 1 },
-      aiUsage: null,
-      source: 'rule',
-      requestId: 'rid-verify-wa',
-    });
-
-    await worker.processInboundSms(job({ ...WA_JOB, Body: '246810' }));
-
-    expect(m.recordWhatsAppOptIn).toHaveBeenCalledWith('cust-1');
-    expect(m.classifyStep).toHaveBeenCalledTimes(1);
-    expect(m.classifyStep).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ body: '246810' }),
-      expect.any(Function),
-      expect.any(String),
-    );
-    // "Number verified!" + the help reply.
-    expect(m.sendSms).toHaveBeenCalledTimes(2);
-    expect(m.sendSms).toHaveBeenCalledWith(
-      expect.objectContaining({ body: 'Number verified!', channel: 'whatsapp' }),
-    );
-  });
-
-  it('whatsapp from an already-verified customer: auto opt-in recorded (idempotent), then classified normally', async () => {
-    const worker = await loadWorker();
-    m.classifyStep.mockResolvedValue({
-      intentResult: { intent: 'help', confidence: 1 },
-      aiUsage: null,
-      source: 'rule',
-      requestId: 'rid-wa-verified',
-    });
-
-    await worker.processInboundSms(job({ ...WA_JOB, Body: 'help' }));
-
-    expect(m.recordWhatsAppOptIn).toHaveBeenCalledWith('cust-1');
-    expect(m.classifyStep).toHaveBeenCalledTimes(1);
-    expect(m.sendSms).toHaveBeenCalledTimes(1);
-    expect(m.sendSms).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'whatsapp:+8801712345678', channel: 'whatsapp' }),
-    );
-  });
-
-  it('sms channel verified customer: NO opt-in record (SMS traffic is not WhatsApp consent)', async () => {
-    const worker = await loadWorker();
-    m.classifyStep.mockResolvedValue({
-      intentResult: { intent: 'help', confidence: 1 },
-      aiUsage: null,
-      source: 'rule',
-      requestId: 'rid-sms-optin',
-    });
+    const gate = mountConsentGate();
+    classifyAs('help');
 
     await worker.processInboundSms(job({ From: '+15551234567', Body: 'help', To: '+15559876543' }));
 
-    expect(m.recordWhatsAppOptIn).not.toHaveBeenCalled();
-    expect(m.classifyStep).toHaveBeenCalledTimes(1);
+    expectGatedSend('help');
+    expect(gate.refused).toEqual([]);
   });
 
-  it('whatsapp auto opt-in record failure is best-effort: the intent still dispatches', async () => {
+  it('no_matching_booking: names the customer and the no_matching_booking kind', async () => {
     const worker = await loadWorker();
-    m.recordWhatsAppOptIn.mockRejectedValue(new Error('db down'));
-    m.classifyStep.mockResolvedValue({
-      intentResult: { intent: 'help', confidence: 1 },
-      aiUsage: null,
-      source: 'rule',
-      requestId: 'rid-best-effort',
+    const gate = mountConsentGate();
+    classifyAs('no-matching-booking');
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', Body: 'where is my job', To: '+15559876543' }),
+    );
+
+    expectGatedSend('no_matching_booking');
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('no_matching_booking via the reschedule dead-end: still gated', async () => {
+    const worker = await loadWorker();
+    const gate = mountConsentGate();
+    classifyAs('reschedule');
+    m.getConversationByPhone.mockResolvedValue(null);
+    m.findBookingByPhone.mockResolvedValue(null);
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'RESCHEDULE', To: '+15559876543' }));
+
+    expectGatedSend('no_matching_booking');
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('slot_invalid: names the customer and the slot_invalid kind', async () => {
+    const worker = await loadWorker();
+    const gate = mountConsentGate();
+    classifyAs('slot-choice');
+    m.processSlotChoice.mockResolvedValue(null);
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: '2', To: '+15559876543' }));
+
+    expectGatedSend('slot_invalid');
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('slot_choice: the in-flow confirm prompt names the customer too', async () => {
+    const worker = await loadWorker();
+    const gate = mountConsentGate();
+    classifyAs('slot-choice');
+    m.processSlotChoice.mockImplementation(
+      async (_phone: string, _choice: number, _lookup: unknown, _update: unknown, smsSendFn: (i: GateInput) => Promise<unknown>) => {
+        await smsSendFn({ to: '+15551234567', body: 'Reply YES to confirm this slot.' });
+        return stateRow({ state: 'awaiting_slot_choice' });
+      },
+    );
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: '2', To: '+15559876543' }));
+
+    // reschedule-service sets no kind, so this one is gated on consent alone —
+    // the same contract as the reschedule flow's flowSmsSender.
+    const list = sends();
+    expect(list).toHaveLength(1);
+    expect(list[0].customerId).toBe('cust-1');
+    expect(list[0].organizationId).toBe('org-1');
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('confirm_failed: names the customer and the transactional confirm_failed kind', async () => {
+    const worker = await loadWorker();
+    const gate = mountGateWithoutConsent(); // no consent record at all
+    classifyAs('confirm');
+    m.getConversationByPhone.mockResolvedValue(null);
+    m.confirmReschedule.mockResolvedValue({
+      success: false,
+      error: 'Calendar event creation failed: boom',
     });
 
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
+
+    // Admitted by the allowlist, not by a consent record.
+    expectGatedSend('confirm_failed');
+    expect(gate.optIn).toBe(false);
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('booking_confirmation: names the customer and the booking_confirmation kind', async () => {
+    const worker = await loadWorker();
+    const gate = mountConsentGate();
+    classifyAs('confirm');
+    m.getConversationByPhone.mockResolvedValue(null);
+    m.confirmReschedule.mockResolvedValue(confirmedBooking());
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
+
+    expectGatedSend('booking_confirmation');
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('non-vacuity: with no consent record the confirmation SMS is REFUSED, not just annotated', async () => {
+    const worker = await loadWorker();
+    const gate = mountGateWithoutConsent();
+    classifyAs('confirm');
+    m.getConversationByPhone.mockResolvedValue(null);
+    m.confirmReschedule.mockResolvedValue(confirmedBooking());
+
+    // A send that fails the gate propagates, so the surrounding catch escalates
+    // instead of reaching Twilio. Pre-repair this send carried no customerId
+    // and would have gone out ungated — which is exactly what this asserts.
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
+
+    expect(gate.refused).toEqual(['booking_confirmation']);
+    expect(m.createEscalation).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'processing_error' }),
+    );
+  });
+
+  // --- The confirm-code handshake caller (the pre-classify branch) -----------
+  // The same booking_confirmation send, reached by the OTHER caller of
+  // performConfirmation: a code reply while the conversation is still
+  // `awaiting_confirmation_code`. That branch runs BEFORE classify, so it never
+  // passed through handleConfirmIntent. It is the caller that dropped the
+  // customerId argument — the signature could not express it, so the send rode
+  // the gate's `customerId == null` exemption. Two threads, two pins.
+
+  it('confirm-code verified: the booking confirmation names the scoped customer and its kind', async () => {
+    const worker = await loadWorker();
+    const gate = mountConsentGate();
+    m.getConversationByPhone.mockResolvedValue(
+      stateRow({
+        confirmationCodeHash: sha256Hex('482913'),
+        confirmationCodeExpiresAt: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+    m.confirmReschedule.mockResolvedValue(confirmedBooking());
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', Body: '482913', To: '+15559876543' }),
+    );
+
+    // The handshake ran pre-classify, so the code reply is still never an intent.
+    expect(m.classifyStep).not.toHaveBeenCalled();
+    // THE PIN: the one send names the in-scope customer and is org-scoped, so
+    // the ledger row carries customer_id and the consent gate really applies.
+    // Drop the customerId argument at this call site and `customerId` is
+    // undefined here — the send becomes exempt and this test goes red.
+    expectGatedSend('booking_confirmation');
+    expect(gate.optIn).toBe(true); // admitted by the consent record, not the allowlist
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('non-vacuity: confirm-code verified with no consent record REFUSES the confirmation SMS', async () => {
+    const worker = await loadWorker();
+    const gate = mountGateWithoutConsent();
+    m.getConversationByPhone.mockResolvedValue(
+      stateRow({
+        confirmationCodeHash: sha256Hex('482913'),
+        confirmationCodeExpiresAt: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+    m.confirmReschedule.mockResolvedValue(confirmedBooking());
+
+    // A refused send propagates out of performConfirmation into its own catch,
+    // so the job escalates instead of reaching Twilio. Pre-repair this branch
+    // named no customer and the SMS would have gone out ungated — which is
+    // exactly what this asserts.
+    await worker.processInboundSms(
+      job({ From: '+15551234567', Body: '482913', To: '+15559876543' }),
+    );
+
+    expect(gate.refused).toEqual(['booking_confirmation']);
+    expect(gate.optIn).toBe(false);
+    expect(m.sendSms).toHaveBeenCalledTimes(1); // attempted, and refused
+    expect(m.createEscalation).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'processing_error' }),
+    );
+    // The calendar mutation is NOT rolled back — the consent gate is an
+    // outbound boundary, and the booking stays confirmed. Pinned so nobody
+    // reads the refusal as a failed confirmation.
+    expect(m.updateBookingTimes).toHaveBeenCalledTimes(1);
+  });
+
+  // --- The confirm dead-end (performConfirmation) ----------------------------
+  // The same no_matching_booking body, reached by a DIFFERENT caller: the
+  // confirm intent's confirmReschedule reported the conversation was gone.
+  // Two threads, two pins — a dropped customerId in either is a red test
+  // instead of a silently ungated customer SMS.
+
+  it('confirm dead-end: the post-mutation no_matching_booking names the customer and its kind', async () => {
+    const worker = await loadWorker();
+    const gate = mountConsentGate();
+    classifyAs('confirm');
+    m.getConversationByPhone.mockResolvedValue(null);
+    m.confirmReschedule.mockResolvedValue({ success: false, error: 'No conversation found' });
+
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
+
+    // The dead-end SMS, not the courtesy confirm-failed one.
+    expectGatedSend('no_matching_booking');
+    expect(m.confirmReschedule).toHaveBeenCalledTimes(1);
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('non-vacuity: with no consent record the confirm dead-end SMS is REFUSED, not just annotated', async () => {
+    const worker = await loadWorker();
+    const gate = mountGateWithoutConsent();
+    classifyAs('confirm');
+    m.getConversationByPhone.mockResolvedValue(null);
+    m.confirmReschedule.mockResolvedValue({ success: false, error: 'No conversation found' });
+
+    // A refused send propagates out of performConfirmation into its own catch,
+    // so the job escalates instead of reaching Twilio. Drop the customerId
+    // argument at this call site and `refused` stays empty — the same ungated
+    // send the assertion above pins shut.
+    await worker.processInboundSms(job({ From: '+15551234567', Body: 'CONFIRM', To: '+15559876543' }));
+
+    expect(gate.refused).toEqual(['no_matching_booking']);
+    expect(gate.optIn).toBe(false);
+    expect(m.createEscalation).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'processing_error' }),
+    );
+  });
+
+  // --- The five OTP / handshake sites ---------------------------------------
+  // These must name the customer AND a transactional kind. The allowlist (not
+  // the no-customerId exemption) is what admits them, so the verification
+  // handshake can never deadlock against the consent record it produces.
+
+  it('T14 verification_code: names the customer and the verification_code kind', async () => {
+    const worker = await loadWorker();
+    const gate = mountGateWithoutConsent();
+    m.findOrCreateCustomer.mockResolvedValue(unverifiedRow());
+
     await expect(
-      worker.processInboundSms(job({ ...WA_JOB, Body: 'help' })),
+      worker.processInboundSms(job({ From: '+15551234567', Body: 'hello', To: '+15559876543' })),
     ).resolves.toBeUndefined();
-    expect(m.classifyStep).toHaveBeenCalledTimes(1);
-    expect(m.sendSms).toHaveBeenCalledTimes(1);
-    expect(m.createEscalation).not.toHaveBeenCalled();
+
+    const list = sends();
+    expect(list).toHaveLength(1);
+    expect(list[0].customerId).toBe('cust-1');
+    expect(list[0].kind).toBe('verification_code');
+    expect(gate.optIn).toBe(false);
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('T14 number_verified: names the customer and the number_verified kind', async () => {
+    const worker = await loadWorker();
+    const gate = mountGateWithoutConsent();
+    m.findOrCreateCustomer.mockResolvedValue(
+      unverifiedRow({
+        verificationCode: '246810',
+        verificationCodeExpiresAt: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+    classifyAs('unknown');
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', Body: '246810', To: '+15559876543' }),
+    );
+
+    const list = sends();
+    expect(list).toHaveLength(1);
+    expect(list[0].body).toBe('Number verified!');
+    expect(list[0].customerId).toBe('cust-1');
+    expect(list[0].kind).toBe('number_verified');
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('T14 code_mismatch: names the customer and the code_mismatch kind', async () => {
+    const worker = await loadWorker();
+    const gate = mountGateWithoutConsent();
+    m.findOrCreateCustomer.mockResolvedValue(
+      unverifiedRow({
+        verificationCode: '246810',
+        verificationCodeExpiresAt: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', Body: '000000', To: '+15559876543' }),
+    );
+
+    const list = sends();
+    expect(list).toHaveLength(1);
+    expect(list[0].customerId).toBe('cust-1');
+    expect(list[0].kind).toBe('code_mismatch');
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('T15 confirm_code: names the customer and the confirm_code kind', async () => {
+    const worker = await loadWorker();
+    const gate = mountGateWithoutConsent();
+    m.getConversationByPhone.mockResolvedValue(stateRow());
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', Body: '482913', To: '+15559876543' }),
+    );
+
+    const list = sends();
+    expect(list).toHaveLength(1);
+    expect(list[0].body).toMatch(/^Reply with \d{6} to confirm your appointment change\.$/);
+    expect(list[0].customerId).toBe('cust-1');
+    expect(list[0].kind).toBe('confirm_code');
+    expect(gate.refused).toEqual([]);
+  });
+
+  it('T15 code_mismatch: names the customer and the code_mismatch kind', async () => {
+    const worker = await loadWorker();
+    const gate = mountGateWithoutConsent();
+    m.getConversationByPhone.mockResolvedValue(
+      stateRow({
+        confirmationCodeHash: sha256Hex('482913'),
+        confirmationCodeExpiresAt: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', Body: '000000', To: '+15559876543' }),
+    );
+
+      const list = sends();
+      expect(list).toHaveLength(1);
+      expect(list[0].body).toBe("That code didn't match — try again.");
+      expect(list[0].customerId).toBe('cust-1');
+      expect(list[0].kind).toBe('code_mismatch');
+      expect(gate.refused).toEqual([]);
+    });
+
+    it('T15 lockout re-issue: the 3rd wrong code names the customer and the confirm_code kind', async () => {
+      const worker = await loadWorker();
+      const gate = mountGateWithoutConsent();
+      // Two prior mismatches already counted, so this wrong code trips the
+      // lockout and re-issues a fresh code. That is the SECOND caller of
+      // issueFlowCodeAndSend (the first-CONFIRM site is the other), and the
+      // one that had no pin: drop its customerId argument and this SMS goes
+      // out exempt.
+      m.getConversationByPhone.mockResolvedValue(
+        stateRow({
+          confirmationCodeHash: sha256Hex('482913'),
+          confirmationCodeExpiresAt: '2099-01-01T00:00:00.000Z',
+          confirmationAttempts: 2,
+        }),
+      );
+
+      await worker.processInboundSms(
+        job({ From: '+15551234567', Body: '000000', To: '+15559876543' }),
+      );
+
+      const list = sends();
+      expect(list).toHaveLength(1);
+      // The fresh code, not the retry prompt.
+      expect(list[0].body).toMatch(/^Reply with \d{6} to confirm your appointment change\.$/);
+      expect(list[0].customerId).toBe('cust-1');
+      expect(list[0].kind).toBe('confirm_code');
+      // This one names no organizationId, so the gate keys off customerId
+      // alone (and the send writes no ledger row) — pinned so a future
+      // "simplification" is a visible contract change, not a silent one.
+      expect(list[0].organizationId).toBeUndefined();
+      // Admitted by the allowlist, not by a consent record.
+      expect(gate.optIn).toBe(false);
+      expect(gate.refused).toEqual([]);
+      // A re-issue stops the flow: no mutation, and the code reply is never
+      // classified as an intent.
+      expect(m.confirmReschedule).not.toHaveBeenCalled();
+      expect(m.classifyStep).not.toHaveBeenCalled();
+    });
+
+  // --- The deliberate exemptions --------------------------------------------
+
+  it('staff ack stays exempt: no customerId and no kind (it addresses the operator)', async () => {
+    const worker = await loadWorker();
+    const gate = mountConsentGate(); // optIn stays false: the staff flow returns before the write
+    m.resolveStaffByPhone.mockResolvedValue({ tradespersonId: 'trades-1', userId: 'user-1' });
+
+    await worker.processInboundSms(
+      job({ From: '+15551234567', Body: 'on my way', To: '+15559876543' }),
+    );
+
+    expect(m.recordSmsOptIn).not.toHaveBeenCalled();
+    expect(m.findOrCreateCustomer).not.toHaveBeenCalled();
+    const ack = sends();
+    expect(ack).toHaveLength(1);
+    // The key must be ABSENT, not present-and-undefined: a blank/empty id is
+    // the one shape that could later be mistaken for "gated".
+    expect(ack[0]).not.toHaveProperty('customerId');
+    expect(ack[0]).not.toHaveProperty('kind');
+    expect(ack[0].organizationId).toBe('org-1');
+    expect(gate.refused).toEqual([]);
   });
 });

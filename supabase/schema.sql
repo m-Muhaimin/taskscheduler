@@ -6,12 +6,15 @@
 --          Supabase SQL editor. Safe to re-run — every statement is
 --          idempotent (IF NOT EXISTS / add column if not exists / drop+add).
 -- Build  : verbatim concatenation of apps/api/src/db/migrations/001..009
---          (rl_ prefix, matches git HEAD 20bb9cf + cba5256) plus the T17
---          Phase B WhatsApp plumbing block appended below (mirror of
---          migrations/014-whatsapp-fallback.sql: rl_outbound_messages ledger,
---          rl_customers WhatsApp opt-in columns, rl_conversations channel
---          CHECK widened to include 'whatsapp'). Running this on a fresh
---          project reproduces exactly the state of the live project.
+--          (rl_ prefix, matches git HEAD 20bb9cf + cba5256) plus the appended
+--          SMS-only outbound-message ledger block below, a mirror of
+--          migrations/014-whatsapp-fallback.sql. That file's name is historical
+--          and is kept so the migration history of already-provisioned
+--          environments still resolves — the product is SMS only and the file
+--          contains no second channel. It mirrors two things: the SMS-only
+--          rl_outbound_messages outbound ledger, and the rl_customers SMS
+--          opt-in columns sms_opted_in / sms_opted_in_at. Running this on a
+--          fresh project reproduces exactly the state of the live project.
 -- Expect : 16 public tables: rl_jobs, rl_escalations, rl_conversation_states,
 --          rl_tradespeople, rl_ai_usage, rl_organizations,
 --          rl_organization_members, rl_twilio_numbers, rl_customers,
@@ -406,7 +409,7 @@ create table if not exists public.rl_conversations (
   customer_id        uuid not null
                      references public.rl_customers(id) on delete cascade,
   channel            text not null
-                     check (channel in ('sms', 'voice', 'web', 'whatsapp')),
+                     check (channel in ('sms', 'voice', 'web')),
   status             text not null default 'open'
                      check (status in ('open', 'closed', 'escalated')),
   intent             text,
@@ -565,26 +568,30 @@ revoke all on public.rl_google_credentials from anon, authenticated;
 revoke all on public.rl_oauth_states from anon, authenticated;
 
 -- ============================================================================
--- T17 Phase B — WhatsApp fallback channel plumbing (mirror of
+-- T17 Phase C — SMS-only outbound-message ledger (mirror of
 -- apps/api/src/db/migrations/014-whatsapp-fallback.sql)
 -- ----------------------------------------------------------------------------
--- The WhatsApp fallback ENGINE (delivery-failure detection + auto-retry) is a
--- later phase; Phase B ships the plumbing: an outbound-message ledger (shared
--- by sms + whatsapp, engine-shaped), WhatsApp opt-in consent columns on
--- customers (storage only), and the rl_conversations channel CHECK widened to
--- 'whatsapp'. Idempotent — the drop+add CHECK below is re-run safe and never
--- rewrites rows (007's inline check auto-named rl_conversations_channel_check).
+-- This block is SMS only. It ships two things: the outbound-message ledger
+-- rl_outbound_messages (one row per tracked outbound SMS, carrying the Twilio
+-- MessageSid and delivery status; the Twilio StatusCallback reports on it), and
+-- the SMS opt-in consent columns on customers (sms_opted_in / sms_opted_in_at —
+-- storage only; services/consent-service.ts is the sole authority for them).
+-- The ledger's own channel CHECK is restricted to 'sms' below. The
+-- rl_conversations channel CHECK is NOT widened: 007's ('sms', 'voice', 'web')
+-- stands, exactly as created by 007's inline check (auto-named
+-- rl_conversations_channel_check). Idempotent — the drop+add CHECKs below are
+-- re-run safe and never rewrite rows.
 -- ============================================================================
 
 create table if not exists public.rl_outbound_messages (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.rl_organizations (id),
   customer_id uuid references public.rl_customers (id),
-  to_phone text not null,                 -- bare E.164 (no whatsapp: prefix)
+  to_phone text not null,                 -- bare E.164
   body text not null,
-  channel text not null default 'sms',    -- 'sms' | 'whatsapp'
+  channel text not null default 'sms',    -- 'sms' only — SMS-only product
   message_sid text unique,                -- Twilio MessageSid; NULL until sent
-  kind text,                              -- outbound kind (e.g. 'reschedule_offer'); NULL until Phase D writes
+  kind text,                              -- outbound kind (e.g. 'reschedule_offer'); set when the caller supplies one, else NULL
   status text not null default 'queued',  -- see CHECK below
   error_code text,                        -- Twilio ErrorCode on delivery failure (NULL otherwise)
   created_at timestamptz not null default now(),
@@ -592,11 +599,11 @@ create table if not exists public.rl_outbound_messages (
 );
 
 comment on table public.rl_outbound_messages is
-  'Ledger of outbound SMS/WhatsApp messages (T17 Phase B + D: delivery-failure fallback engine reads this table)';
+  'Ledger of outbound SMS messages (T17 Phase C: the Twilio StatusCallback reports on this table)';
 
 alter table public.rl_outbound_messages
   drop constraint if exists rl_outbound_messages_channel_check,
-  add constraint rl_outbound_messages_channel_check check (channel in ('sms', 'whatsapp'));
+  add constraint rl_outbound_messages_channel_check check (channel in ('sms'));
 
 alter table public.rl_outbound_messages
   drop constraint if exists rl_outbound_messages_status_check,
@@ -615,21 +622,18 @@ create index if not exists rl_outbound_messages_phone_idx
 alter table public.rl_outbound_messages enable row level security;
 revoke all on public.rl_outbound_messages from anon, authenticated;
 
--- WhatsApp consent storage on customers (write points are Phase D).
+-- SMS consent storage on customers (T17 Phase C).
 alter table public.rl_customers
-  add column if not exists whatsapp_opted_in boolean not null default false;
+  add column if not exists sms_opted_in boolean not null default false;
 
 alter table public.rl_customers
-  add column if not exists whatsapp_opted_in_at timestamptz;
+  add column if not exists sms_opted_in_at timestamptz;
 
-comment on column public.rl_customers.whatsapp_opted_in is
-  'Customer consented to WhatsApp fallback delivery (T17 Phase D writes; Phase B storage only — never fall back without this set)';
+comment on column public.rl_customers.sms_opted_in is
+  'Customer consented to SMS messaging (T17 Phase C: never send without this set)';
 
--- Widen the conversation channel CHECK (007 inline check auto-named
--- rl_conversations_channel_check) — final state matches the CREATE above.
-alter table public.rl_conversations
-  drop constraint if exists rl_conversations_channel_check,
-  add constraint rl_conversations_channel_check check (channel in ('sms', 'voice', 'web', 'whatsapp'));
+-- The conversation channel CHECK is 'sms' | 'voice' | 'web' in the CREATE TABLE
+-- above. The product is SMS only, so no channel widening is needed.
 
 -- ============================================================================
 -- VERIFICATION — run after executing the schema (expect 16 rl_* tables)

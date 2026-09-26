@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => {
     insertOutbound: vi.fn(),
     markSent: vi.fn(),
     markFailed: vi.fn(),
+    hasSmsOptIn: vi.fn(),
+    recordSmsOptIn: vi.fn(),
   };
 });
 
@@ -20,6 +22,11 @@ vi.mock('./outbound-ledger.js', () => ({
   insertOutbound: mocks.insertOutbound,
   markSent: mocks.markSent,
   markFailed: mocks.markFailed,
+}));
+
+vi.mock('./consent-service.js', () => ({
+  hasSmsOptIn: mocks.hasSmsOptIn,
+  recordSmsOptIn: mocks.recordSmsOptIn,
 }));
 
 import { sendSms } from './sms-service.js';
@@ -39,16 +46,20 @@ beforeEach(() => {
   mocks.insertOutbound.mockReset();
   mocks.markSent.mockReset();
   mocks.markFailed.mockReset();
+  mocks.hasSmsOptIn.mockReset();
+  mocks.recordSmsOptIn.mockReset();
   mocks.insertOutbound.mockResolvedValue({ id: 'ledger-1' });
   mocks.markSent.mockResolvedValue(undefined);
   mocks.markFailed.mockResolvedValue(undefined);
+  // Default: the pre-existing tests name a customerId, so the consent gate
+  // passes for them without any edit.
+  mocks.hasSmsOptIn.mockResolvedValue(true);
 });
 
 afterEach(() => {
   delete process.env.TWILIO_ACCOUNT_SID;
   delete process.env.TWILIO_AUTH_TOKEN;
   delete process.env.TWILIO_PHONE_NUMBER;
-  delete process.env.TWILIO_WHATSAPP_NUMBER;
   delete process.env.TWILIO_SMS_DRY_RUN;
   delete process.env.API_BASE_URL;
   delete process.env.TWILIO_MESSAGE_STATUS_CALLBACK_URL;
@@ -129,60 +140,7 @@ describe('sendSms', () => {
   });
 });
 
-describe('sendSms — T17 whatsapp channel', () => {
-  const WHATSAPP_NUMBER = '+8809612345678'; // org BYON (business WhatsApp) number
-
-  beforeEach(() => {
-    process.env.TWILIO_WHATSAPP_NUMBER = WHATSAPP_NUMBER;
-  });
-
-  it('prefixes `to` with whatsapp: and selects TWILIO_WHATSAPP_NUMBER as from', async () => {
-    mocks.create.mockResolvedValue({ sid: 'SM789', status: 'queued' });
-
-    const result = await sendSms({ to: '+8801712345678', body: 'Hi!', channel: 'whatsapp' });
-
-    expect(result).toEqual({ messageSid: 'SM789', status: 'queued' });
-    expect(mocks.create).toHaveBeenCalledWith({
-      to: 'whatsapp:+8801712345678',
-      from: WHATSAPP_NUMBER,
-      body: 'Hi!',
-    });
-  });
-
-  it('never double-prefixes an already-prefixed `to` (idempotent addressing)', async () => {
-    mocks.create.mockResolvedValue({ sid: 'SM790', status: 'queued' });
-
-    await sendSms({ to: 'whatsapp:+8801712345678', body: 'Hi!', channel: 'whatsapp' });
-
-    expect(mocks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'whatsapp:+8801712345678' }),
-    );
-  });
-
-  it('throws a clear error when no WhatsApp sender is configured, before any API call', async () => {
-    delete process.env.TWILIO_WHATSAPP_NUMBER;
-
-    await expect(sendSms({ to: '+8801712345678', body: 'Hi!', channel: 'whatsapp' })).rejects.toThrow(
-      /TWILIO_WHATSAPP_NUMBER/,
-    );
-    expect(mocks.create).not.toHaveBeenCalled();
-  });
-
-  it('an explicit `from` overrides the env sender for whatsapp (caller-supplied sender)', async () => {
-    mocks.create.mockResolvedValue({ sid: 'SM791', status: 'queued' });
-
-    await sendSms({
-      to: '+8801712345678',
-      from: 'whatsapp:+8801987654321',
-      body: 'Hi!',
-      channel: 'whatsapp',
-    });
-
-    expect(mocks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'whatsapp:+8801712345678', from: 'whatsapp:+8801987654321' }),
-    );
-  });
-
+describe('sendSms — status callback + dry-run passthrough', () => {
   it('passes statusCallbackUrl to Twilio ONLY when the caller sets it', async () => {
     mocks.create.mockResolvedValue({ sid: 'SM792', status: 'queued' });
 
@@ -202,7 +160,7 @@ describe('sendSms — T17 whatsapp channel', () => {
     delete process.env.TWILIO_AUTH_TOKEN;
     process.env.TWILIO_SMS_DRY_RUN = 'true';
 
-    const result = await sendSms({ to: '+8801712345678', body: 'Hi!', channel: 'whatsapp' });
+    const result = await sendSms({ to: '+15559876543', body: 'Hi!' });
 
     expect(result.messageSid).toMatch(/^dry-run-/);
     expect(result.status).toBe('queued');
@@ -226,7 +184,7 @@ describe('sendSms — T18 outbound ledger', () => {
     expect(mocks.insertOutbound).toHaveBeenCalledWith({
       organizationId: 'org-1',
       customerId: 'cust-1',
-      toPhone: '+15559876543', // bare E.164, no whatsapp: prefix on the ledger
+      toPhone: '+15559876543', // bare E.164 on the ledger
       body: 'Hi!',
       channel: 'sms',
       kind: 'booking_confirmation',
@@ -349,29 +307,178 @@ describe('sendSms — T18 outbound ledger', () => {
     expect(mocks.markSent).toHaveBeenCalledWith(result.messageSid, 'ledger-1');
     expect(mocks.create).not.toHaveBeenCalled();
   });
+});
 
-  it('whatsapp channel with organizationId: ledger stores the bare E.164 (no prefix), Twilio gets the prefixed to', async () => {
-    process.env.TWILIO_WHATSAPP_NUMBER = '+8809612345678';
-    mocks.create.mockResolvedValue({ sid: 'SM131', status: 'queued' });
+describe('sendSms — SMS consent hard rule', () => {
+  const base = {
+    to: '+15551234567',
+    from: '+15559876543',
+    body: 'your appointment is confirmed',
+    organizationId: 'org-1',
+  };
 
-    await sendSms({
-      to: '+8801712345678',
-      body: 'Hi!',
-      channel: 'whatsapp',
-      organizationId: 'org-1',
-      kind: 'help',
-    });
+  // The committed suite sets `create` per-test; the consent tests share one
+  // happy-path stub so the only variable under test is the gate itself.
+  beforeEach(() => {
+    mocks.create.mockResolvedValue({ sid: 'SMconsent', status: 'queued' });
+  });
 
-    expect(mocks.insertOutbound).toHaveBeenCalledWith({
-      organizationId: 'org-1',
-      customerId: null,
-      toPhone: '+8801712345678', // bare E.164 on the ledger
-      body: 'Hi!',
-      channel: 'whatsapp',
-      kind: 'help',
-    });
-    expect(mocks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'whatsapp:+8801712345678' }),
+  it('refuses a proactive send to a customer with no consent record', async () => {
+    mocks.hasSmsOptIn.mockResolvedValue(false);
+
+    await expect(sendSms({ ...base, customerId: 'cust-1', kind: 'booking_confirmation' })).rejects.toThrow(
+      /no SMS consent record/,
     );
+
+    // Fail closed with no trace: no ledger row, no Twilio request.
+    expect(mocks.hasSmsOptIn).toHaveBeenCalledWith('cust-1');
+    expect(mocks.insertOutbound).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('fails closed with no ledger row when the consent read itself errors', async () => {
+    mocks.hasSmsOptIn.mockRejectedValue(new Error('DATABASE_URL not configured'));
+
+    await expect(
+      sendSms({ ...base, customerId: 'cust-1', kind: 'booking_confirmation' }),
+    ).rejects.toThrow('DATABASE_URL not configured');
+
+    expect(mocks.insertOutbound).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('TWILIO_SMS_DRY_RUN=true does NOT bypass the consent gate', async () => {
+    // The gate sits above the dry-run branch. If the two are ever reordered (or
+    // the dry-run branch grows an early return above the gate) this refuses to
+    // fail and a refused send would silently go "out" in dev.
+    process.env.TWILIO_SMS_DRY_RUN = 'true';
+    mocks.hasSmsOptIn.mockResolvedValue(false);
+
+    await expect(
+      sendSms({ ...base, customerId: 'cust-1', kind: 'booking_confirmation' }),
+    ).rejects.toThrow(/no SMS consent record/);
+
+    // Nothing at all: no ledger insert, no markSent, no Twilio create.
+    expect(mocks.hasSmsOptIn).toHaveBeenCalledWith('cust-1');
+    expect(mocks.insertOutbound).not.toHaveBeenCalled();
+    expect(mocks.markSent).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('allows the send when the customer has a logged consent record', async () => {
+    mocks.hasSmsOptIn.mockResolvedValue(true);
+
+    await sendSms({ ...base, customerId: 'cust-1', kind: 'booking_confirmation' });
+
+    // Non-vacuous: the gate really ran, for THIS customer. Deleting
+    // assertSmsConsent would make this fail rather than pass silently.
+    expect(mocks.hasSmsOptIn).toHaveBeenCalledWith('cust-1');
+    expect(mocks.insertOutbound).toHaveBeenCalled();
+    expect(mocks.markSent).toHaveBeenCalled();
+  });
+
+  it('allows each transactional OTP kind without consulting consent', async () => {
+    const kinds = [
+      'verification_code',
+      'confirm_code',
+      'number_verified',
+      'code_mismatch',
+      'confirm_failed',
+    ] as const;
+
+    for (const kind of kinds) {
+      mocks.insertOutbound.mockClear();
+      mocks.markSent.mockClear();
+      mocks.hasSmsOptIn.mockClear();
+      mocks.hasSmsOptIn.mockResolvedValue(false);
+
+      await sendSms({ ...base, customerId: 'cust-1', kind });
+
+      expect(mocks.hasSmsOptIn).not.toHaveBeenCalled();
+      expect(mocks.markSent).toHaveBeenCalled();
+    }
+  });
+
+  it('does not consult consent for a send with no customerId (staff ack, manual reply)', async () => {
+    mocks.hasSmsOptIn.mockClear();
+    mocks.hasSmsOptIn.mockResolvedValue(false);
+
+    await sendSms({ ...base, kind: 'staff_ack' });
+
+    expect(mocks.hasSmsOptIn).not.toHaveBeenCalled();
+    expect(mocks.markSent).toHaveBeenCalled();
+
+    // Non-vacuity: the gate is LIVE in this very environment — the same input
+    // plus a customerId is refused. So "hasSmsOptIn not called" above is about
+    // the exemption, not about the gate having been deleted.
+    mocks.hasSmsOptIn.mockClear();
+    await expect(
+      sendSms({ ...base, customerId: 'cust-1', kind: 'booking_confirmation' }),
+    ).rejects.toThrow(/no SMS consent record/);
+    expect(mocks.hasSmsOptIn).toHaveBeenCalledWith('cust-1');
+  });
+
+  it('checks consent for a customer send with no kind at all', async () => {
+    mocks.hasSmsOptIn.mockResolvedValue(false);
+
+    await expect(sendSms({ ...base, customerId: 'cust-1' })).rejects.toThrow(/no SMS consent record/);
+  });
+
+  it('gates a customer send with NO organizationId: refused, no ledger row, no Twilio call', async () => {
+    mocks.hasSmsOptIn.mockResolvedValue(false);
+
+    await expect(
+      sendSms({ to: base.to, from: base.from, body: base.body, customerId: 'cust-1' }),
+    ).rejects.toThrow(/no SMS consent record/);
+
+    expect(mocks.hasSmsOptIn).toHaveBeenCalledWith('cust-1');
+    expect(mocks.insertOutbound).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('gates a customer send with NO organizationId: consent present, send proceeds untracked', async () => {
+    mocks.hasSmsOptIn.mockResolvedValue(true);
+
+    const result = await sendSms({
+      to: base.to,
+      from: base.from,
+      body: base.body,
+      customerId: 'cust-1',
+    });
+
+    // Gated, allowed, and untracked: no organizationId means no ledger row at
+    // all (the pre-T18 legacy contract), but the consent gate still ran.
+    expect(mocks.hasSmsOptIn).toHaveBeenCalledWith('cust-1');
+    expect(result).toEqual({ messageSid: 'SMconsent', status: 'queued' });
+    expect(mocks.insertOutbound).not.toHaveBeenCalled();
+    expect(mocks.markSent).not.toHaveBeenCalled();
+    expect(mocks.markFailed).not.toHaveBeenCalled();
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a blank customerId as absent: exempt, and null on the ledger', async () => {
+    mocks.hasSmsOptIn.mockResolvedValue(false);
+
+    await sendSms({ ...base, customerId: '   ' });
+
+    // A blank id is NOT a customer: it cannot silently exempt a send by
+    // looking like one, and it never reaches the ledger's customer_id column.
+    expect(mocks.hasSmsOptIn).not.toHaveBeenCalled();
+    expect(mocks.insertOutbound).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: null }),
+    );
+    expect(mocks.markSent).toHaveBeenCalled();
+  });
+
+  it('trims a padded customerId and uses the trimmed value for BOTH the gate and the ledger', async () => {
+    mocks.hasSmsOptIn.mockResolvedValue(false);
+
+    await expect(sendSms({ ...base, customerId: '  cust-1  ' })).rejects.toThrow(
+      /no SMS consent record/,
+    );
+
+    expect(mocks.hasSmsOptIn).toHaveBeenCalledWith('cust-1');
   });
 });

@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { verifyTwilioSignature } from '../middleware/twilio-signature.js';
 import { getByMessageSid, markStatus, TERMINAL_STATUSES } from '../services/outbound-ledger.js';
-import { handleFailedSms } from '../services/fallback-service.js';
 import type { TwilioStatusCallbackPayload } from '../types.js';
 
 /**
@@ -16,10 +15,8 @@ import type { TwilioStatusCallbackPayload } from '../types.js';
  *   delivered, failed|undelivered → failed, anything else ignored.
  * - Terminal rows (delivered/retried/escalated) → 200 no-op: idempotent.
  *   (The ledger's own UPDATE guard enforces the same rule at the DB layer.)
- * - failed/undelivered on an sms-channel row → handleFailedSms (WhatsApp
- *   fallback engine); its outcome is marked on the ledger for
- *   retried|escalated|blocked_optin, and the row stays 'failed' for
- *   no_fallback|no_template.
+ * - failed|undelivered → failed. No retry, no fallback, no new status: the
+ *   row is recorded as 'failed' and the callback ends there.
  * - ALWAYS responds 200 — Twilio retries non-2xx, and a delivery report for a
  *   phone we no longer track must never cause callback storms.
  */
@@ -70,21 +67,10 @@ twilioStatusRouter.post('/status', verifyTwilioSignature, async (req, res) => {
       }
       case 'failed':
       case 'undelivered': {
+        // Record the failure and stop. There is no retry engine this round —
+        // see docs/tasks/sms-only-cleanup/DECISION.md. The row stays 'failed'
+        // until a human acts; a later real delivery report is still recorded.
         await markStatus(row.id, 'failed', errorCode);
-        // Fallback engine: an SMS that failed delivery may be retried once
-        // over WhatsApp (country + consent + template gates inside). WhatsApp
-        // failures never fall back (this IS the fallback channel).
-        if (row.channel === 'sms') {
-          const result = await handleFailedSms(row);
-          if (
-            result.outcome === 'retried' ||
-            result.outcome === 'escalated' ||
-            result.outcome === 'blocked_optin'
-          ) {
-            await markStatus(row.id, result.outcome);
-          }
-          // no_fallback / no_template: row stays 'failed' (already marked).
-        }
         break;
       }
       default: {

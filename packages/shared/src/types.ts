@@ -8,17 +8,13 @@ export type IsoString = string;
 
 /**
  * Messaging channels the app accepts and replies on. 'sms' is the default and
- * historically the only channel; 'whatsapp' is the fallback channel (T17 Phase
- * B plumbing — inbound accepted + same-channel in-window replies; the
- * delivery-failure fallback ENGINE is a later phase).
+ * historically the only channel.
  */
-export type Channel = 'sms' | 'whatsapp';
+export type Channel = 'sms';
 
 /**
- * Outbound message kinds (T18). Every tracked outbound SMS/WhatsApp message
- * carries one of these on its rl_outbound_messages ledger row (`kind`); the
- * WhatsApp fallback engine resolves the Twilio content-template SID from it
- * (`WHATSAPP_TEMPLATE_<KIND>` env, upper-snake).
+ * Outbound message kinds (T18). Every tracked outbound SMS message
+ * carries one of these on its rl_outbound_messages ledger row (`kind`).
  */
 export type MessagingKind =
   | 'booking_confirmation'
@@ -158,9 +154,10 @@ export type ConversationState = {
   confirmationAttempts: number;
 };
 
-/** Twilio inbound-SMS webhook body (application/x-www-form-urlencoded), §2.1. */
+/** Twilio inbound-SMS webhook body (application/x-www-form-urlencoded), §2.1.
+ *  SMS only — WhatsApp inbound has been removed. */
 export type TwilioInboundSmsPayload = {
-  From: string; // customer phone, E.164 (WhatsApp inbound arrives as whatsapp:+880…)
+  From: string; // customer phone, E.164
   To: string; // tradesperson's Twilio number, E.164
   Body: string;
   MessageSid: string;
@@ -393,7 +390,7 @@ export type MetricCardDto = {
 };
 
 export type InboxItemState = 'attention' | 'active' | 'handled';
-export type InboxChannel = 'SMS' | 'Voice' | 'Web' | 'WhatsApp';
+export type InboxChannel = 'SMS' | 'Voice' | 'Web';
 
 export type InboxItemDto = {
   id: string;
@@ -487,7 +484,7 @@ export type MessageDeliveryStatus =
   | 'escalated'
   | 'blocked_optin';
 
-/** One row of the dashboard Messages (delivery-ledger) table. */
+/** One row of the dashboard Messages (delivery-ledger) table. SMS only. */
 export type MessageRowDto = {
   id: string;
   toPhone: string;
@@ -590,14 +587,14 @@ export interface DashboardAutomationResponse {
   automation: AutomationSettings;
 }
 
-/** READ-ONLY presence readout for WhatsApp fallback config (never carries values). */
+/** READ-ONLY presence readout for SMS config (never carries values). SMS only. */
 export type MessagingConfigStatusDto = {
-  whatsappNumberConfigured: boolean;
   statusCallbackBaseUrlConfigured: boolean;
-  /** E.164 country codes from WHATSAPP_FALLBACK_COUNTRIES (default ['+880']). */
+  /** E.164 country codes (SMS only — no WhatsApp fallback). */
   fallbackCountries: string[];
+  /** Whether the generic SMS template is configured. */
   genericTemplateConfigured: boolean;
-  /** Per-kind WHATSAPP_TEMPLATE_<KIND_UPPER_SNAKE> presence. */
+  /** Per-kind SMS template presence. */
   templateConfigured: Record<MessagingKind, boolean>;
 };
 

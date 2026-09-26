@@ -12,7 +12,7 @@
  * Twilio / Google / Postgres.
  */
 
-import { sendSms, type SendSmsInput } from './sms-service.js';
+import type { SendSmsInput } from './sms-service.js';
 import { createCalendarEvent, type AuthFn, type CreateEventFn, type FreeBusyFn, type ListEventsFn } from './calendar-service.js';
 import { createEscalation, type CreateEscalationInput } from './escalation-service.js';
 import { createConversation, getConversationByPhone, updateConversation, type UpdateConversationInput } from './conversation-service.js';
@@ -42,6 +42,15 @@ export type UserLookupFn = (userId: string) => Promise<{
   smsSettings: { rescheduleTemplate: string };
 } | null>;
 export type SmsSendFn = (input: SendSmsInput) => Promise<{ messageSid: string; status: string }>;
+// HARD RULE: SmsSendFn has NO default implementation anywhere in this module.
+// A default here would be `(input) => sendSms(input)`, and the only payload
+// these flows build is `{ to, body }` — no `customerId` — so sendSms's consent
+// gate returns early (customerId == null ⇒ UNGATED) and the send becomes both
+// unconsented and unledgered. Making the sender a REQUIRED parameter means a
+// caller that forgets it, or drops the argument, fails to compile instead of
+// silently downgrading a consent-checked send into an exempt one. Every send
+// path must therefore inject a sender that threads the in-scope customerId
+// (worker/process-inbound-sms.ts does exactly that).
 export type ConversationLookupFn = (phone: string) => Promise<ConversationState | null>;
 export type ConversationUpdateFn = (id: string, input: UpdateConversationInput) => Promise<ConversationState>;
 export type CreateEscalationFn = (input: CreateEscalationInput) => Promise<import('@tradescheduler/shared').Escalation>;
@@ -60,14 +69,6 @@ export type GetAvailableSlotsFn = (
 ) => Promise<GetAvailableSlotsResult>;
 export type PickOfferedSlotsFn = (available: AvailableSlot[], timeZone?: string) => OfferedSlot[];
 export type SiblingBookingsFn = (userId: string, fromIso: IsoString, toIso: IsoString) => Promise<Booking[]>;
-
-// ---------------------------------------------------------------------------
-// Default SMS sender (real sendSms)
-// ---------------------------------------------------------------------------
-
-async function defaultSendSms(input: SendSmsInput) {
-  return sendSms(input);
-}
 
 // ---------------------------------------------------------------------------
 // initiateRescheduleFlow
@@ -96,7 +97,7 @@ export async function initiateRescheduleFlow(
   listEventsFn: ListEventsFn,
   bookingLookupFn: BookingLookupFn,
   userLookupFn: UserLookupFn,
-  smsSendFn: SmsSendFn = defaultSendSms,
+  smsSendFn: SmsSendFn,
   conversationCreateFn: typeof createConversation = createConversation,
   getAvailableSlotsFn: GetAvailableSlotsFn = schedulingEngine.getAvailableSlots,
   pickOfferedSlotsFn: PickOfferedSlotsFn = schedulingEngine.pickOfferedSlots,
@@ -215,7 +216,7 @@ export async function processSlotChoice(
   choice: number,
   conversationLookupFn: ConversationLookupFn = getConversationByPhone,
   conversationUpdateFn: ConversationUpdateFn = updateConversation,
-  smsSendFn: SmsSendFn = defaultSendSms,
+  smsSendFn: SmsSendFn,
 ): Promise<ConversationState | null> {
   const conversation = await conversationLookupFn(phone);
   if (!conversation) {
@@ -264,6 +265,11 @@ export async function processSlotChoice(
  * 4. On success: update booking to confirmed with eventId; mark conversation completed.
  * 5. On calendar failure: booking stays pending with null eventId; escalation created.
  *
+ * SENDS NOTHING. This function mutates calendar + booking + conversation state
+ * only; it takes no SMS sender because it never sends. The confirmation SMS is
+ * sent by the caller (worker/process-inbound-sms.ts `sendConfirmationSms`),
+ * which threads the in-scope customerId so the consent gate applies.
+ *
  * Returns { success: true, booking, conversation } on success.
  * Returns { success: false, error } when:
  *   - No conversation in the right state.
@@ -277,7 +283,6 @@ export async function confirmReschedule(
   bookingLookupFn: BookingLookupFn,
   conversationLookupFn: ConversationLookupFn = getConversationByPhone,
   conversationUpdateFn = updateConversation,
-  smsSendFn: SmsSendFn = defaultSendSms,
   createEscalationFn = createEscalation,
 ): Promise<{ success: boolean; booking?: Booking; conversation?: ConversationState; error?: string }> {
   const conversation = await conversationLookupFn(phone);

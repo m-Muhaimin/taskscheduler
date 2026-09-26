@@ -64,13 +64,13 @@ describe('GET /api/dashboard/messages', () => {
     );
   });
 
-  it('200 passes ?channel=whatsapp&status=failed&page=2&pageSize=5 through to the service', async () => {
-    const res = await get('/api/dashboard/messages?channel=whatsapp&status=failed&page=2&pageSize=5', AUTHORIZED);
+  it('200 passes ?channel=sms&status=failed&page=2&pageSize=5 through to the service', async () => {
+    const res = await get('/api/dashboard/messages?channel=sms&status=failed&page=2&pageSize=5', AUTHORIZED);
 
     expect(res.status).toBe(200);
     expect(mocks.getOutboundMessages).toHaveBeenCalledWith(
       ORG_ID,
-      expect.objectContaining({ channel: 'whatsapp', status: 'failed', page: 2, pageSize: 5 }),
+      expect.objectContaining({ channel: 'sms', status: 'failed', page: 2, pageSize: 5 }),
     );
   });
 

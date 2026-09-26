@@ -1,21 +1,41 @@
 import twilio from 'twilio';
-import { normalizeChannelAddress, toChannelAddress } from './phone-utils.js';
 import { insertOutbound, markFailed, markSent } from './outbound-ledger.js';
+import { hasSmsOptIn } from './consent-service.js';
 import type { Channel, MessagingKind } from '../types.js';
 
 /**
- * SMS/WhatsApp primitive for all downstream flows (reschedule offers,
+ * Kinds that are part of a transaction the customer initiated and are
+ * therefore not marketing messages: an OTP is the customer proving they can
+ * receive at this number, so delivery is what produces the consent record the
+ * gate reads. Every other kind is a proactive send and needs a logged consent
+ * record.
+ *
+ * Deliberately limited to the five OTP/handshake kinds. `reschedule_offer` and
+ * `slot_invalid` are transactional in spirit (they are replies inside a flow we
+ * already agreed with the customer) but are NOT in this set — they take the
+ * `hasSmsOptIn` path like any other proactive send, which is safe because the
+ * consent record is written on the customer's first inbound SMS, before any
+ * flow reply can go out.
+ *
+ * Refusal of these is deliberately NOT enforced here: failing to deliver an
+ * OTP deadlocks the verification gate, and the gate is what produces consent.
+ */
+const TRANSACTIONAL_KINDS: ReadonlySet<MessagingKind> = new Set<MessagingKind>([
+  'verification_code',
+  'confirm_code',
+  'number_verified',
+  'code_mismatch',
+  'confirm_failed',
+]);
+
+/**
+ * SMS primitive for all downstream flows (reschedule offers,
  * confirmations, missed-call auto-text) — build-sequence.md Step 3.
  *
  * Rules honored:
  * - Env-free boot: credentials are read per call, never at module scope.
  * - No silently empty sender number: `from` defaults to TWILIO_PHONE_NUMBER
- *   (SMS) or TWILIO_WHATSAPP_NUMBER (whatsapp channel), and is validated
- *   before any API call.
- * - Channel-aware addressing: channel='whatsapp' prefixes `to` with
- *   `whatsapp:` (idempotent — a pre-prefixed address is never double-prefixed)
- *   and selects the WhatsApp sender; any other/omitted channel keeps SMS
- *   behavior byte-for-byte unchanged.
+ *   and is validated before any API call.
  * - `statusCallbackUrl` is passed through only when the caller supplies it
  *   (default none — no delivery tracking unless asked). When `organizationId`
  *   is present (T18) a default callback URL is derived from
@@ -26,12 +46,19 @@ import type { Channel, MessagingKind } from '../types.js';
  *   with the message SID on success, or 'failed' on throw (then the error
  *   rethrows — callers decide retry/escalation). No organizationId → zero
  *   ledger/db behavior (legacy callers byte-identical).
+ * - Consent hard rule: a send that names a `customerId` is refused unless
+ *   the customer has a logged SMS consent record or the kind is one of the
+ *   five transactional OTP kinds. See assertSmsConsent below. The check runs
+ *   first, so a refused send writes no ledger row and makes no Twilio request.
+ *   A send with no `customerId` is UNGATED — that exemption is a caller
+ *   discipline (staff ack + manual dashboard reply only), not something this
+ *   function can enforce, so a new automated send MUST thread the customer id.
  * - On Twilio API failure: log + rethrow (callers decide retry/escalation).
  * - Logged trail (no message body, to minimize PII in logs).
  */
 export interface SendSmsInput {
   to: string;
-  /** Defaults to TWILIO_PHONE_NUMBER (sms) / TWILIO_WHATSAPP_NUMBER (whatsapp) when omitted. */
+  /** Defaults to TWILIO_PHONE_NUMBER when omitted. */
   from?: string;
   body: string;
   /** Defaults to 'sms' when omitted — legacy callers keep SMS behavior. */
@@ -40,7 +67,7 @@ export interface SendSmsInput {
   statusCallbackUrl?: string;
   /** T18: when present, a rl_outbound_messages ledger row is written (org-scoped). */
   organizationId?: string;
-  /** T18: outbound kind for the ledger row / WhatsApp template resolution. */
+  /** T18: outbound kind for the ledger row. */
   kind?: MessagingKind;
   /** T18: customer row id for the ledger row (nullable column). */
   customerId?: string;
@@ -56,36 +83,86 @@ export interface SentSms {
   status: string;
 }
 
+/**
+ * The customer id a send is scoped to, normalized: a non-blank string, or null
+ * for "no customer".
+ *
+ * A blank or whitespace-only id is treated as ABSENT. Absent means exempt, so
+ * a stray `customerId: ''` would otherwise silently turn a gated send into an
+ * ungated one — and the raw blank string would be written to the ledger's
+ * customer_id column. Normalizing once, here, means the gate and the ledger can
+ * never disagree about whether the send named a customer.
+ */
+function scopedCustomerId(input: SendSmsInput): string | null {
+  const raw = input.customerId;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * The consent hard rule. A send that names a customer must be backed by a
+ * logged consent record unless the kind is transactional.
+ *
+ * THE EXEMPTION IS CALLER DISCIPLINE, NOT ENFORCEMENT. `customerId == null`
+ * means UNGATED — the gate deliberately does not look up the recipient's phone
+ * number to decide whether they are a customer. Only two send paths are
+ * allowed to rely on that: the staff acknowledgement
+ * (worker/process-inbound-sms.ts) and the manual dashboard reply
+ * (routes/dashboard/inbox.ts → worker/process-outbound-sms.ts). Both address a
+ * person the tradesperson is already in conversation with and neither has a
+ * customer row. Every automated customer-facing send in
+ * worker/process-inbound-sms.ts threads the in-scope `customer.id` precisely
+ * so it lands here instead of in the exemption.
+ *
+ * Throws rather than silently dropping: the caller decides whether to
+ * escalate, and a silent drop looks identical to a Twilio outage.
+ */
+async function assertSmsConsent(input: SendSmsInput, customerId: string | null): Promise<void> {
+  if (customerId == null) return;
+
+  const kind = input.kind;
+  if (kind && TRANSACTIONAL_KINDS.has(kind)) return;
+
+  if (await hasSmsOptIn(customerId)) return;
+
+  console.warn(
+    '[sms] refused: no SMS consent record',
+    JSON.stringify({ customerId, kind: kind ?? null, to: input.to }),
+  );
+  throw new Error(
+    'sendSms: blocked — no SMS consent record for this customer (consent is recorded on their first inbound SMS)',
+  );
+}
+
 export async function sendSms(input: SendSmsInput): Promise<SentSms> {
+  // One normalization, shared by the gate and the ledger insert below.
+  const customerId = scopedCustomerId(input);
+
+  // Consent hard rule — the FIRST thing that happens: before the ledger
+  // insert, before the dry-run branch, before client.messages.create. A
+  // refused send leaves no trace at all: no rl_outbound_messages row, no
+  // Twilio request. A DB error inside the consent read propagates the same
+  // way, so the gate fails closed rather than open.
+  await assertSmsConsent(input, customerId);
+
   const channel: Channel = input.channel ?? 'sms';
-  const from =
-    channel === 'whatsapp'
-      ? (input.from ?? process.env.TWILIO_WHATSAPP_NUMBER)
-      : (input.from ?? process.env.TWILIO_PHONE_NUMBER);
+  const from = input.from ?? process.env.TWILIO_PHONE_NUMBER;
   if (!from) {
-    throw new Error(
-      channel === 'whatsapp'
-        ? 'Twilio WhatsApp sender number not configured (TWILIO_WHATSAPP_NUMBER or `from`)'
-        : 'Twilio outbound number not configured (TWILIO_PHONE_NUMBER or `from`)',
-    );
+    throw new Error('Twilio outbound number not configured (TWILIO_PHONE_NUMBER or `from`)');
   }
   if (!input.to) {
     throw new Error('sendSms: `to` is required');
   }
 
-  // WhatsApp requires a whatsapp:+ address on To (and From). toChannelAddress
-  // is idempotent, so a pre-prefixed `to` still lands on the channel.
-  const to = channel === 'whatsapp' ? toChannelAddress(input.to, 'whatsapp') : input.to;
-
   // T18 ledger: one row per tracked outbound message, written BEFORE the
   // Twilio create so every attempted message is visible even if the create
-  // throws or the process dies mid-send. The ledger stores the bare E.164
-  // (no whatsapp: prefix — see migration 014 column comment).
+  // throws or the process dies mid-send. The ledger stores the bare E.164.
   const ledgerRow = input.organizationId
     ? await insertOutbound({
         organizationId: input.organizationId,
-        customerId: input.customerId ?? null,
-        toPhone: normalizeChannelAddress(input.to).e164,
+        customerId,
+        toPhone: input.to,
         body: input.body,
         channel,
         kind: input.kind ?? null,
@@ -114,7 +191,7 @@ export async function sendSms(input: SendSmsInput): Promise<SentSms> {
       const dryRunSid = `dry-run-${Date.now()}`;
       console.log(
         '[sms:dry-run] would send',
-        JSON.stringify({ to, from, body: input.body, channel }),
+        JSON.stringify({ to: input.to, from, body: input.body, channel }),
       );
       if (ledgerRow) await markSent(dryRunSid, ledgerRow.id);
       return { messageSid: dryRunSid, status: 'queued' };
@@ -128,7 +205,7 @@ export async function sendSms(input: SendSmsInput): Promise<SentSms> {
 
     const client = twilio(accountSid, authToken);
     const createParams: { to: string; from: string; body: string; statusCallback?: string } = {
-      to,
+      to: input.to,
       from,
       body: input.body,
     };
@@ -136,12 +213,12 @@ export async function sendSms(input: SendSmsInput): Promise<SentSms> {
     const message = await client.messages.create(createParams);
     console.log(
       '[sms] sent',
-      JSON.stringify({ messageSid: message.sid, status: message.status, to, from, channel }),
+      JSON.stringify({ messageSid: message.sid, status: message.status, to: input.to, from, channel }),
     );
     if (ledgerRow) await markSent(message.sid, ledgerRow.id);
     return { messageSid: message.sid, status: message.status };
   } catch (err) {
-    console.error('[sms] send failed', JSON.stringify({ to, from }), err);
+    console.error('[sms] send failed', JSON.stringify({ to: input.to, from }), err);
     // T18: a tracked message that never made it to Twilio is recorded as
     // failed — never silently absent from the ledger. The rethrow preserves
     // the pre-T18 contract for callers.

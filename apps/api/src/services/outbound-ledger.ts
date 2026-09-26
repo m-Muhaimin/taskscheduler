@@ -1,6 +1,6 @@
 /**
  * Outbound message ledger (T18 Phase C) — one rl_outbound_messages row per
- * tracked outbound SMS/WhatsApp message, updated by the Twilio StatusCallback
+ * tracked outbound SMS message, updated by the Twilio StatusCallback
  * route (/api/twilio/webhooks/status) as delivery reports arrive.
  *
  * Follows the escalation-service conventions: lazy env-free singleton pool,
@@ -10,15 +10,18 @@
  * Status lifecycle (migration 014 CHECK):
  *   queued --insert--> queued (message_sid NULL)
  *   queued --markSent--> sent (+message_sid)
- *   sent  --status callback--> delivered | failed | (retried|escalated|blocked_optin)
+ *   sent  --status callback--> delivered | failed
  *
  * Terminal states — 'delivered' | 'retried' | 'escalated' — are write-once:
  * every UPDATE carries a `status <> all terminal states` guard, so a late or
- * duplicated Twilio callback is a no-op (idempotent; Twilio retries non-2xx
- * responses, and the route always answers 2xx, but duplicates can still
- * arrive out of band). 'blocked_optin' is intentionally NOT terminal: it is a
- * pre-delivery consent refusal, and a subsequent real delivery report for the
- * same SID (rare, contradictory) is still recorded.
+ * duplicated Twilio callback is a no-op. 'blocked_optin' is intentionally NOT
+ * terminal: it is a pre-delivery consent refusal, and a subsequent real
+ * delivery report for the same SID is still recorded.
+ *
+ * No component writes 'retried' | 'escalated' | 'blocked_optin' today. The
+ * values stay in the migration CHECK, in OutboundStatus and in the label maps
+ * so historical rows keep rendering, but the SMS delivery-failure retry is
+ * out of scope — see docs/tasks/sms-only-cleanup/DECISION.md.
  */
 import { Pool } from 'pg';
 import type { Channel, MessageDeliveryStatus, MessageRowDto, MessagingKind } from '../types.js';

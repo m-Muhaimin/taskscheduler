@@ -101,32 +101,10 @@ describe('POST /api/twilio/webhooks/inbound-sms', () => {
     });
   });
 
-  it('accepts a whatsapp-prefixed From, keeps the raw address, and enqueues with Channel=whatsapp', async () => {
-    const whatsappParams = {
-      ...BASE_PARAMS,
-      From: 'whatsapp:+8801712345678',
-      To: 'whatsapp:+8809612345678',
-    };
-    const sig = computeSignature(webhookUrl(), whatsappParams);
-    const res = await post(whatsappParams, sig);
-
-    expect(res.status).toBe(200);
-    expect(mocks.enqueue).toHaveBeenCalledTimes(1);
-    expect(mocks.enqueue).toHaveBeenCalledWith({
-      type: 'inbound_sms',
-      payload: expect.objectContaining({
-        // Raw address preserved for the job — the worker re-normalizes (T17).
-        From: 'whatsapp:+8801712345678',
-        To: 'whatsapp:+8809612345678',
-        MessageSid: BASE_PARAMS.MessageSid,
-        AccountSid: BASE_PARAMS.AccountSid,
-        Channel: 'whatsapp',
-      }),
-    });
-  });
-
-  it('rejects a whatsapp-prefixed non-E.164 From with 400 INVALID_PHONE (normalized first)', async () => {
-    const sent = { ...BASE_PARAMS, From: 'whatsapp:not-a-phone' };
+  it('rejects a non-E.164 From with 400 INVALID_PHONE (before enqueue)', async () => {
+    // CP03 C7: the malformed number must not reach the queue, so no customer
+    // row can ever be created for it.
+    const sent = { ...BASE_PARAMS, From: 'not-a-phone' };
     const sig = computeSignature(webhookUrl(), sent);
     const res = await post(sent, sig);
 
@@ -176,8 +154,12 @@ describe('POST /api/twilio/webhooks/inbound-sms', () => {
     expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-E.164 From with 400 INVALID_PHONE (before enqueue)', async () => {
-    const sent = { ...BASE_PARAMS, From: 'not-a-phone' };
+  it('rejects a whitespace-only From with 400 INVALID_PHONE (clears the required-field gate)', async () => {
+    // A blank-but-present From clears REQUIRED_FIELDS; the E.164 gate is the
+    // only thing between it and the queue. Same 400 as the other malformed
+    // cases, different rejection reason inside normalizeChannelAddress (empty
+    // after trim rather than not-E.164).
+    const sent = { ...BASE_PARAMS, From: '   ' };
     const sig = computeSignature(webhookUrl(), sent);
     const res = await post(sent, sig);
 

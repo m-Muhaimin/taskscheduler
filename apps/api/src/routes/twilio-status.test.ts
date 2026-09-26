@@ -5,18 +5,25 @@ import type { Server } from 'node:http';
 const mocks = vi.hoisted(() => ({
   getByMessageSid: vi.fn(),
   markStatus: vi.fn(),
-  handleFailedSms: vi.fn(),
 }));
 
-vi.mock('../services/outbound-ledger.js', () => ({
-  getByMessageSid: mocks.getByMessageSid,
-  markStatus: mocks.markStatus,
-  TERMINAL_STATUSES: ['delivered', 'retried', 'escalated'],
-}));
-
-vi.mock('../services/fallback-service.js', () => ({
-  handleFailedSms: mocks.handleFailedSms,
-}));
+// The ledger is MOCKED in this file, so everything here proves the ROUTE's
+// behavior and intent only — not the ledger's SQL guard. The real
+// terminal-status guarantee ('failed' must stay updatable, i.e. absent from
+// TERMINAL_STATUSES) is asserted against the real module in
+// src/services/outbound-ledger.test.ts. TERMINAL_STATUSES is the one value the
+// route actually reads, so it is supplied from the real module rather than
+// hardcoded here — a local copy would drift from production silently.
+vi.mock('../services/outbound-ledger.js', async () => {
+  const actual = await vi.importActual<typeof import('../services/outbound-ledger.js')>(
+    '../services/outbound-ledger.js',
+  );
+  return {
+    getByMessageSid: mocks.getByMessageSid,
+    markStatus: mocks.markStatus,
+    TERMINAL_STATUSES: actual.TERMINAL_STATUSES,
+  };
+});
 
 import { createApp } from '../app.js';
 import type { OutboundLedgerRow } from '../services/outbound-ledger.js';
@@ -103,10 +110,8 @@ afterAll(async () => {
 beforeEach(() => {
   mocks.getByMessageSid.mockReset();
   mocks.markStatus.mockReset();
-  mocks.handleFailedSms.mockReset();
   mocks.getByMessageSid.mockResolvedValue(ledgerRow());
   mocks.markStatus.mockResolvedValue(undefined);
-  mocks.handleFailedSms.mockResolvedValue({ outcome: 'no_fallback', detail: 'mock' });
 });
 
 describe('POST /api/twilio/webhooks/status — T18 delivery reports', () => {
@@ -156,51 +161,20 @@ describe('POST /api/twilio/webhooks/status — T18 delivery reports', () => {
 
     expect(res.status).toBe(200);
     expect(mocks.markStatus).toHaveBeenCalledWith('ledger-1', 'delivered');
-    expect(mocks.handleFailedSms).not.toHaveBeenCalled();
   });
 
-  it('failed (sms) → marks failed, runs the fallback engine, and re-marks retried | escalated | blocked_optin outcomes', async () => {
-    mocks.handleFailedSms.mockResolvedValue({ outcome: 'retried', detail: 'whatsapp accepted' });
-
+  it('failed / undelivered → marks the ledger failed once and stops (no retry engine)', async () => {
     const res = await callback('failed', { ErrorCode: '30007' });
 
     expect(res.status).toBe(200);
-    expect(mocks.markStatus).toHaveBeenCalledWith('ledger-1', 'failed', '30007');
-    expect(mocks.handleFailedSms).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'ledger-1', messageSid: 'SM123', channel: 'sms' }),
-    );
-    expect(mocks.markStatus).toHaveBeenCalledWith('ledger-1', 'retried'); // re-mark outcome
-
-    mocks.markStatus.mockClear();
-    mocks.handleFailedSms.mockResolvedValue({ outcome: 'escalated', detail: 'whatsapp threw' });
-    await callback('undelivered');
-    expect(mocks.markStatus).toHaveBeenCalledWith('ledger-1', 'escalated');
-
-    mocks.markStatus.mockClear();
-    mocks.handleFailedSms.mockResolvedValue({ outcome: 'blocked_optin', detail: 'not opted in' });
-    await callback('failed', { ErrorCode: '30007' });
-    expect(mocks.markStatus).toHaveBeenCalledWith('ledger-1', 'blocked_optin');
-  });
-
-  it('failed (sms) with no_fallback | no_template outcome → row stays failed (no re-mark)', async () => {
-    mocks.handleFailedSms.mockResolvedValue({ outcome: 'no_fallback', detail: 'country miss' });
-
-    await callback('failed', { ErrorCode: '30007' });
-
-    expect(mocks.handleFailedSms).toHaveBeenCalled();
-    // Exactly one markStatus call (failed + error code); NO outcome re-mark.
+    // Exactly one ledger write: the failure. No retried/escalated/blocked_optin.
     expect(mocks.markStatus).toHaveBeenCalledTimes(1);
     expect(mocks.markStatus).toHaveBeenCalledWith('ledger-1', 'failed', '30007');
-    expect(mocks.markStatus).not.toHaveBeenCalledWith('ledger-1', 'no_fallback');
-  });
 
-  it('failed on a whatsapp-channel row → NO fallback re-try (this is the fallback channel)', async () => {
-    mocks.getByMessageSid.mockResolvedValue(ledgerRow({ channel: 'whatsapp' }));
-
-    await callback('failed', { ErrorCode: '30007' });
-
-    expect(mocks.markStatus).toHaveBeenCalledWith('ledger-1', 'failed', '30007');
-    expect(mocks.handleFailedSms).not.toHaveBeenCalled();
+    const res2 = await callback('undelivered');
+    expect(res2.status).toBe(200);
+    expect(mocks.markStatus).toHaveBeenCalledTimes(2);
+    expect(mocks.markStatus).toHaveBeenLastCalledWith('ledger-1', 'failed', null);
   });
 
   it('terminal row (already delivered/retried/escalated) → 200 idempotent no-op', async () => {
@@ -210,7 +184,18 @@ describe('POST /api/twilio/webhooks/status — T18 delivery reports', () => {
 
     expect(res.status).toBe(200);
     expect(mocks.markStatus).not.toHaveBeenCalled();
-    expect(mocks.handleFailedSms).not.toHaveBeenCalled();
+  });
+
+  it('a failed row is NOT terminal — a later genuine delivered report still marks it delivered', async () => {
+    // The SMS-only round keeps a later real delivery report honorable: 'failed'
+    // records the failure and stops, but it must not close the row for good.
+    mocks.getByMessageSid.mockResolvedValue(ledgerRow({ status: 'failed', errorCode: '30007' }));
+
+    const res = await callback('delivered');
+
+    expect(res.status).toBe(200);
+    expect(mocks.markStatus).toHaveBeenCalledTimes(1);
+    expect(mocks.markStatus).toHaveBeenCalledWith('ledger-1', 'delivered');
   });
 
   it('unmapped Twilio statuses (accepted/scheduled/canceled/…) → 200 no-op', async () => {

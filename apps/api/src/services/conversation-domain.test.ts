@@ -154,26 +154,16 @@ describe('conversation-domain', () => {
       expect(mocks.query.mock.calls[2][1]).toEqual(['org-1', 'cust-1', 'sms']);
     });
 
-    it('creates a whatsapp-channel conversation (T17 Phase B)', async () => {
+    it('rejects an invalid channel (sms|voice|web only)', async () => {
       const domain = await loadDomain();
-      mocks.query
-        .mockResolvedValueOnce({ rows: [{ id: 'cust-1', organization_id: 'org-1' }] }) // customer check
-        .mockResolvedValueOnce({ rows: [] }) // none open
-        .mockResolvedValueOnce({ rows: [conversationRow({ id: 'conv-wa', channel: 'whatsapp' })] }); // insert
-
-      const conv = await domain.findOrCreateConversation('cust-1', 'whatsapp');
-
-      expect(conv.channel).toBe('whatsapp');
-      const insertSql = mocks.query.mock.calls[2][0] as string;
-      expect(insertSql).toContain('insert into public.rl_conversations');
-      expect(mocks.query.mock.calls[2][1]).toEqual(['org-1', 'cust-1', 'whatsapp']);
-    });
-
-    it('rejects an invalid channel', async () => {
-      const domain = await loadDomain();
+      // The customer lookup runs before the channel guard, so it needs a row.
       mocks.query.mockResolvedValueOnce({ rows: [{ id: 'cust-1', organization_id: 'org-1' }] });
 
-      await expect(domain.findOrCreateConversation('cust-1', 'carrier' as never)).rejects.toMatchObject({
+      // 'carrier' is not in the valid set — reject. The cast is the point: the
+      // runtime guard must reject a value the type system already excludes.
+      await expect(
+        domain.findOrCreateConversation('cust-1', 'carrier' as unknown as 'sms' | 'voice' | 'web'),
+      ).rejects.toMatchObject({
         code: 'INVALID_CHANNEL',
       });
     });
@@ -210,15 +200,6 @@ describe('conversation-domain', () => {
     it('rejects a missing body for SMS (non-voice) inbound (MISSING_BODY)', async () => {
       const domain = await loadDomain();
       mocks.query.mockResolvedValueOnce({ rows: [{ id: 'conv-1', status: 'open', channel: 'sms' }] });
-
-      await expect(domain.appendMessage('conv-1', 'inbound', '  ')).rejects.toMatchObject({
-        code: 'MISSING_BODY',
-      });
-    });
-
-    it('requires a body for whatsapp inbound (non-voice, like sms) (MISSING_BODY)', async () => {
-      const domain = await loadDomain();
-      mocks.query.mockResolvedValueOnce({ rows: [{ id: 'conv-1', status: 'open', channel: 'whatsapp' }] });
 
       await expect(domain.appendMessage('conv-1', 'inbound', '  ')).rejects.toMatchObject({
         code: 'MISSING_BODY',

@@ -1,8 +1,8 @@
+import type { TwilioInboundSmsPayload } from '../types.js';
 import { Router } from 'express';
 import { verifyTwilioSignature } from '../middleware/twilio-signature.js';
 import { enqueue } from '../services/queue-service.js';
 import { normalizeChannelAddress } from '../services/phone-utils.js';
-import type { TwilioInboundSmsPayload } from '../types.js';
 
 /**
  * POST /api/twilio/webhooks/inbound-sms (spec §2.1).
@@ -27,11 +27,21 @@ twilioWebhooksRouter.post('/inbound-sms', verifyTwilioSignature, async (req, res
   }
 
   // CP03 spec C7: reject non-E.164 From BEFORE enqueueing — no customer row
-  // should ever be created for a malformed phone number. WhatsApp inbound
-  // arrives as whatsapp:+880…; normalize (strip the prefix) FIRST so the gate
-  // validates the bare E.164, then keep the raw values for the job payload
-  // (the worker re-normalizes From and To for org lookup / channel routing).
-  const { e164: fromE164, channel } = normalizeChannelAddress(body.From as string);
+  // should ever be created for a malformed phone number. normalizeChannelAddress
+  // REJECTS by throwing, so the throw is the gate: it must be translated into
+  // this 400 here, otherwise it escapes the async handler and the caller sees
+  // a 500 for what is a client-supplied bad number. The raw values are kept for
+  // the job payload (the worker re-normalizes From and To for org lookup /
+  // channel routing).
+  let fromE164: string;
+  try {
+    ({ e164: fromE164 } = normalizeChannelAddress(body.From as string));
+  } catch {
+    res.status(400).json({ error: 'INVALID_PHONE' });
+    return;
+  }
+  // Defense in depth: mirror of normalizeChannelAddress's own E.164 check, so a
+  // future leniency there can never let a malformed From reach the queue.
   if (!/^\+?[1-9][0-9]{1,14}$/.test(fromE164)) {
     res.status(400).json({ error: 'INVALID_PHONE' });
     return;
@@ -46,7 +56,7 @@ twilioWebhooksRouter.post('/inbound-sms', verifyTwilioSignature, async (req, res
         Body: body.Body,
         MessageSid: body.MessageSid,
         AccountSid: body.AccountSid ?? null,
-        Channel: channel,
+        Channel: 'sms',
       },
     });
     console.log('[webhook] enqueued job', JSON.stringify({ id: job.id, type: job.type }));

@@ -211,6 +211,7 @@ describe('reschedule-service', () => {
         mockListEventsFn,
         mockBookingLookup,
         mockUserLookup,
+        mockSmsSend,
       );
 
       expect(result).toBeNull();
@@ -440,7 +441,6 @@ describe('reschedule-service', () => {
         mockBookingLookup,
         mockConversationLookup,
         mockConversationUpdate,
-        mockSmsSend,
         mockCreateEscalation,
       );
 
@@ -468,7 +468,6 @@ describe('reschedule-service', () => {
         mockBookingLookup,
         mockConversationLookup,
         mockConversationUpdate,
-        mockSmsSend,
         mockCreateEscalation,
       );
 
@@ -500,7 +499,6 @@ describe('reschedule-service', () => {
         mockBookingLookup,
         mockConversationLookup,
         mockConversationUpdate,
-        mockSmsSend,
         mockCreateEscalation,
       );
 
@@ -536,7 +534,6 @@ describe('reschedule-service', () => {
         mockBookingLookup,
         mockConversationLookup,
         mockConversationUpdate,
-        mockSmsSend,
         mockCreateEscalation,
       );
 
@@ -573,7 +570,6 @@ describe('reschedule-service', () => {
         mockBookingLookup,
         mockConversationLookup,
         mockConversationUpdate,
-        mockSmsSend,
         mockCreateEscalation,
       );
 
@@ -594,7 +590,6 @@ describe('reschedule-service', () => {
         mockBookingLookup,
         mockConversationLookup,
         mockConversationUpdate,
-        mockSmsSend,
         mockCreateEscalation,
       );
 
@@ -617,7 +612,6 @@ describe('reschedule-service', () => {
         mockBookingLookup,
         mockConversationLookup,
         mockConversationUpdate,
-        mockSmsSend,
         mockCreateEscalation,
       );
 
@@ -643,7 +637,6 @@ describe('reschedule-service', () => {
         mockBookingLookup,
         mockConversationLookup,
         mockConversationUpdate,
-        mockSmsSend,
         mockCreateEscalation,
       );
 
@@ -670,7 +663,6 @@ describe('reschedule-service', () => {
         mockBookingLookup,
         mockConversationLookup,
         mockConversationUpdate,
-        mockSmsSend,
         mockCreateEscalation,
       );
 

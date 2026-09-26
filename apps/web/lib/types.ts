@@ -7,7 +7,7 @@ export interface InboxItem {
   lastMessage: string;
   suggestion: string;
   time: string;
-  channel: "SMS" | "Voice" | "Web" | "WhatsApp";
+  channel: "SMS" | "Voice" | "Web";
 }
 
 export interface Appointment {
@@ -63,7 +63,7 @@ export interface MessageRow {
   id: string;
   toPhone: string;
   body: string;
-  channel: "sms" | "whatsapp";
+  channel: "sms";
   kindLabel: string | null;
   status: "queued" | "sent" | "delivered" | "failed" | "retried" | "escalated" | "blocked_optin";
   statusLabel: string;

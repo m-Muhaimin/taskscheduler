@@ -25,7 +25,7 @@ const STATUS_ORDER: MessageRow["status"][] = [
   "blocked_optin",
 ];
 
-const CHANNEL_LABEL: Record<MessageRow["channel"], string> = { sms: "SMS", whatsapp: "WhatsApp" };
+const CHANNEL_LABEL: Record<MessageRow["channel"], string> = { sms: "SMS" };
 
 type StatusFilter = "all" | MessageRow["status"];
 

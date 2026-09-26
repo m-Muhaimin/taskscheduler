@@ -65,7 +65,7 @@ export interface Conversation {
   id: string;
   organizationId: string;
   customerId: string;
-  channel: 'sms' | 'voice' | 'web' | 'whatsapp';
+  channel: 'sms' | 'voice' | 'web';
   status: 'open' | 'closed' | 'escalated';
   intent: string | null;
   currentState: string;
@@ -261,7 +261,7 @@ const CONVERSATION_OPEN_WINDOW_HOURS = 48;
 
 export async function findOrCreateConversation(
   customerId: string,
-  channel: 'sms' | 'voice' | 'web' | 'whatsapp',
+  channel: 'sms' | 'voice' | 'web',
 ): Promise<Conversation> {
   // Validate customer exists.
   const customer = await getPool().query<{ id: string; organization_id: string }>(
@@ -274,7 +274,7 @@ export async function findOrCreateConversation(
   const organizationId = customer.rows[0].organization_id;
 
   // Validate channel.
-  if (!['sms', 'voice', 'web', 'whatsapp'].includes(channel)) {
+  if (!['sms', 'voice', 'web'].includes(channel)) {
     throw makeApiError('bad_request', 'Invalid channel', 'INVALID_CHANNEL');
   }
 
